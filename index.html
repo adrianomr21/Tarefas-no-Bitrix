@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Criar tarefas no Bitrix24</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #007bff;
+            --secondary-color: #6c757d;
+            --background-color: #f4f7f9;
+            --card-background: #ffffff;
+            --text-color: #333;
+            --border-color: #e0e0e0;
+            --success-color: #28a745;
+            --error-color: #dc3545;
+        }
+
+        [data-theme="dark"] {
+            --primary-color: #0d8eff;
+            --secondary-color: #8c959d;
+            --background-color: #1a1a1a;
+            --card-background: #2c2c2c;
+            --text-color: #f1f1f1;
+            --border-color: #444;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        .theme-switcher {
+            display: flex;
+            flex-direction: row-reverse;
+            background-color: transparent;
+            color: var(--text-color);
+            border: none;
+            padding: 5px;
+            cursor: pointer;
+        }
+
+        
+        .container {
+            width: 100%;
+            max-width: 850px;
+            background-color: var(--card-background);
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            padding: 30px;
+            box-sizing: border-box;
+            transition: background-color 0.3s, box-shadow 0.3s;
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 1.8em;
+            margin-bottom: 30px;
+        }
+
+        .step-card {
+            background-color: var(--card-background);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 25px;
+            margin-bottom: 20px;
+        }
+
+        .step-card h2 {
+            font-size: 1.2em;
+            margin-top: 0;
+            margin-bottom: 20px;
+            color: var(--primary-color);
+            border-bottom: 2px solid var(--primary-color);
+            padding-bottom: 10px;
+        }
+
+        label {
+            font-weight: 500;
+            display: block;
+            margin-bottom: 8px;
+        }
+
+        input[type="text"],
+        input[type="file"],
+        select {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            box-sizing: border-box;
+            font-size: 1em;
+            transition: border-color 0.2s, box-shadow 0.2s, background-color 0.3s, color 0.3s;
+            background-color: var(--card-background);
+            color: var(--text-color);
+        }
+
+        input[type="text"]:focus,
+        select:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.2);
+        }
+        
+        input::placeholder {
+            color: #999;
+        }
+
+        button {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 6px;
+            font-size: 1em;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s, transform 0.1s;
+            display: block;
+            width: 100%;
+            margin-top: 15px;
+        }
+
+        button:hover {
+            filter: brightness(90%);
+        }
+        
+        /*button:active {
+            transform: scale(0.98);
+            filter: brightness(80%);
+        }
+
+        .theme-switcher:active {
+            transform: scale(0.9);
+        }*/
+
+        #file-upload-section,
+        #mapping,
+        #send-section,
+        #status-section {
+            display: none;
+        }
+
+        #mapping .mapping-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        #mapping .mapping-row:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        #mapping .mapping-row label {
+            font-weight: normal;
+            margin-bottom: 0;
+            flex-basis: 45%;
+        }
+        
+        #mapping .mapping-row select {
+            flex-basis: 50%;
+        }
+
+        #status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 6px;
+            background-color: var(--background-color);
+            border: 1px solid var(--border-color);
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <button class="theme-switcher" id="theme-switcher">☀️</button>
+        <h1>Criar tarefas no Bitrix24</h1>
+
+        <div class="step-card">
+            <h2>Passo 1: Conectar Webhook</h2>
+            <label for="webhookInput">URL do Webhook</label>
+            <input type="text" id="webhookInput" placeholder="https://seu-dominio.bitrix24.com.br/rest/" >
+        </div>
+
+        <div class="step-card" id="file-upload-section">
+            <h2>Passo 2: Carregar Arquivo</h2>
+            <input type="file" id="fileInput" accept=".csv,.xlsx">
+            <button id="importButton">Processar Arquivo</button>
+        </div>
+
+        <div class="step-card" id="mapping">
+            <h2>Passo 3: Mapear Campos</h2>
+            <!-- O conteúdo do mapeamento será inserido aqui -->
+        </div>
+        
+        <div class="step-card" id="send-section">
+             <button id="sendToBitrix">Enviar para o Bitrix</button>
+        </div>
+
+        <div class="step-card" id="status-section">
+            <h2>Status da Importação</h2>
+            <div id="status">Aguardando início...</div>
+        </div>
+    </div>
+
+    <script>
+        let baseUrl = '';
+        let entityTypeId = '';
+        let fileHeaders = [];
+        let fileRows = [];
+        let bitrixFieldDefs = {};
+        let bitrixFields = [];
+        let fieldMappings = {};
+
+        const webhookInput = document.getElementById('webhookInput');
+        const fileUploadSection = document.getElementById('file-upload-section');
+        const fileInput = document.getElementById('fileInput');
+        const importButton = document.getElementById('importButton');
+        const mappingDiv = document.getElementById('mapping');
+        const sendSection = document.getElementById('send-section');
+        const sendButton = document.getElementById('sendToBitrix');
+        const statusSection = document.getElementById('status-section');
+        const statusDiv = document.getElementById('status');
+        const themeSwitcher = document.getElementById('theme-switcher');
+
+        function setTheme(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+            localStorage.setItem('theme', theme);
+            themeSwitcher.textContent = theme === 'dark' ? '🌙' : '☀️';
+        }
+
+        function toggleTheme() {
+            const currentTheme = localStorage.getItem('theme') || 'light';
+            const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+            setTheme(newTheme);
+        }
+
+        themeSwitcher.addEventListener('click', toggleTheme);
+
+        // Define o tema na carga inicial
+        const savedTheme = localStorage.getItem('theme');
+        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        if (savedTheme) {
+            setTheme(savedTheme);
+        } else if (prefersDark) {
+            setTheme('dark');
+        }
+
+
+        webhookInput.addEventListener('input', () => {
+            const url = webhookInput.value.trim();
+            if (url) {
+                try {
+                    const urlObj = new URL(url);
+                    const pathParts = urlObj.pathname.split('/');
+                    const restIndex = pathParts.indexOf('rest');
+                    if (restIndex !== -1 && pathParts.length > restIndex + 2) {
+                        const user = pathParts[restIndex + 1];
+                        const token = pathParts[restIndex + 2];
+                        baseUrl = `${urlObj.origin}/rest/${user}/${token}/`;
+                        
+                        const target = urlObj.searchParams.get('target');
+                        if (target && target.startsWith('DYNAMIC_')) {
+                            entityTypeId = target.split('_')[1].split('_')[0];
+                        }
+                        
+                        if (baseUrl && entityTypeId) {
+                            fileUploadSection.style.display = 'block';
+                            statusSection.style.display = 'block';
+                            statusDiv.textContent = 'Webhook processado com sucesso. EntityTypeId: ' + entityTypeId;
+                        } else {
+                            statusDiv.textContent = 'Não foi possível extrair o EntityTypeId do URL do webhook. Verifique se o parâmetro `target` está presente.';
+                        }
+                    }
+                } catch (e) {
+                    statusDiv.textContent = 'URL do Webhook inválida.';
+                }
+            }
+        });
+
+        importButton.addEventListener('click', () => {
+            if (fileInput.files.length > 0) {
+                const file = fileInput.files[0];
+                const isCsv = file.name.endsWith('.csv');
+                const isXlsx = file.name.endsWith('.xlsx');
+                if (!isCsv && !isXlsx) {
+                    statusDiv.textContent = 'Formato de arquivo não suportado. Use .csv ou .xlsx.';
+                    return;
+                }
+                const reader = new FileReader();
+                reader.onload = async (e) => {
+                    statusDiv.textContent = 'Processando arquivo...';
+                    if (isCsv) {
+                        parseCsv(e.target.result);
+                    } else if (isXlsx) {
+                        parseXlsx(e.target.result);
+                    }
+                    if (fileHeaders.length > 0) {
+                        await fetchBitrixFields();
+                        if (bitrixFields.length > 0) {
+                            displayMapping();
+                        }
+                    }
+                };
+                if (isCsv) {
+                    reader.readAsText(file);
+                } else {
+                    reader.readAsBinaryString(file);
+                }
+            } else {
+                statusDiv.textContent = 'Por favor, selecione um arquivo.';
+            }
+        });
+
+        function parseCsv(text) {
+            const lines = text.split(/\r?\n/);
+            fileHeaders = lines[0].split(',').map(h => h.trim());
+            fileRows = [];
+            for (let i = 1; i < lines.length; i++) {
+                if (lines[i].trim()) {
+                    const row = lines[i].split(',').map(c => c.trim());
+                    if (row.some(c => c !== '')) {
+                        fileRows.push(row);
+                    }
+                }
+            }
+            statusDiv.textContent = `Arquivo carregado. Colunas: ${fileHeaders.join(', ')}. Linhas: ${fileRows.length}`;
+        }
+
+        function parseXlsx(binary) {
+            const workbook = XLSX.read(binary, {type: 'binary'});
+            const sheetName = workbook.SheetNames[0];
+            const sheet = workbook.Sheets[sheetName];
+            const data = XLSX.utils.sheet_to_json(sheet, {header: 1, raw: false});
+            fileHeaders = data[0].map(h => h.toString().trim());
+            fileRows = data.slice(1)
+                .map(row => row.map(c => c ? c.toString().trim() : ''))
+                .filter(row => row.some(c => c !== ''));
+            statusDiv.textContent = `Arquivo carregado. Colunas: ${fileHeaders.join(', ')}. Linhas: ${fileRows.length}`;
+        }
+
+        async function fetchBitrixFields() {
+            statusDiv.textContent += '\nBuscando campos do Bitrix...';
+            const url = baseUrl + 'crm.item.fields';
+            const body = { entityTypeId: parseInt(entityTypeId) };
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = await response.json();
+                if (data.result && data.result.fields) {
+                    bitrixFieldDefs = data.result.fields;
+                    bitrixFields = Object.keys(bitrixFieldDefs).filter(field => !bitrixFieldDefs[field].isReadOnly);
+                    statusDiv.textContent += `\nCampos do Bitrix carregados com sucesso.`;
+                } else {
+                    statusDiv.textContent = 'Erro ao carregar campos do Bitrix: ' + (data.error_description || JSON.stringify(data.error));
+                }
+            } catch (e) {
+                statusDiv.textContent = 'Erro na requisição para buscar campos: ' + e.message;
+            }
+        }
+
+        function displayMapping() {
+            let mappingContent = '';
+            fileHeaders.forEach((header, index) => {
+                let selectOptions = '<option value="">Não vincular</option>';
+                let autoSelected = false;
+                bitrixFields.forEach(field => {
+                    const fieldTitle = bitrixFieldDefs[field].title || field;
+                    const selected = !autoSelected && fieldTitle.toLowerCase() === header.toLowerCase() ? ' selected' : '';
+                    if (selected) autoSelected = true;
+                    selectOptions += `<option value="${field}"${selected}>${fieldTitle}</option>`;
+                });
+                mappingContent += `
+                    <div class="mapping-row">
+                        <label for="map_${index}">${header}</label>
+                        <select id="map_${index}">${selectOptions}</select>
+                    </div>
+                `;
+            });
+            mappingDiv.innerHTML = '<h2>Passo 3: Mapear Campos</h2>' + mappingContent;
+            mappingDiv.style.display = 'block';
+            sendSection.style.display = 'block';
+        }
+
+        sendButton.addEventListener('click', async () => {
+            fieldMappings = {};
+            fileHeaders.forEach((header, index) => {
+                const select = document.getElementById('map_' + index);
+                if (select.value) {
+                    fieldMappings[header] = select.value;
+                }
+            });
+
+            if (Object.keys(fieldMappings).length === 0) {
+                statusDiv.textContent = 'Vincule pelo menos um campo para iniciar a importação.';
+                return;
+            }
+
+            statusDiv.textContent = 'Enviando itens para o Bitrix...';
+            let successCount = 0;
+            let errorCount = 0;
+            
+            const batchCommands = [];
+            for (const row of fileRows) {
+                const fields = {};
+                let hasMappedField = false;
+                fileHeaders.forEach((header, idx) => {
+                    if (fieldMappings[header]) {
+                        hasMappedField = true;
+                        const mappedField = fieldMappings[header];
+                        const def = bitrixFieldDefs[mappedField];
+                        let value = row[idx] || '';
+                        
+                        if (def.type === 'enumeration' && value.trim() !== '') {
+                            const item = def.items.find(it => it.VALUE.toLowerCase() === value.toLowerCase());
+                            value = item ? item.ID : '';
+                        } else if (def.type === 'boolean') {
+                            value = ['y', 'yes', 'true', '1'].includes(value.toLowerCase()) ? 'Y' : 'N';
+                        }
+                        fields[mappedField] = value;
+                    }
+                });
+
+                if (!hasMappedField || Object.values(fields).every(v => v === '' || v === 'N')) {
+                    continue;
+                }
+
+                if (!fields.opened && bitrixFieldDefs.opened && bitrixFieldDefs.opened.isRequired) {
+                    fields.opened = 'Y';
+                }
+
+                let command = `crm.item.add?entityTypeId=${entityTypeId}`;
+                for (const key in fields) {
+                    command += `&fields[${key}]=${encodeURIComponent(fields[key])}`;
+                }
+                batchCommands.push(command);
+            }
+
+            // Processar em lotes de 50
+            for (let i = 0; i < batchCommands.length; i += 50) {
+                const batch = batchCommands.slice(i, i + 50);
+                const body = { cmd: batch };
+                try {
+                    const response = await fetch(baseUrl + 'batch', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body)
+                    });
+                    const data = await response.json();
+                    
+                    if (data.result && data.result.result) {
+                        data.result.result.forEach(itemResult => {
+                            if (itemResult.item) {
+                                successCount++;
+                            } else {
+                                errorCount++;
+                            }
+                        });
+                    } else {
+                        errorCount += batch.length;
+                    }
+                    statusDiv.textContent = `Processando... Sucessos: ${successCount}, Erros: ${errorCount}`;
+
+                } catch (e) {
+                    errorCount += batch.length;
+                    statusDiv.textContent += `\nErro na requisição de lote: ${e.message}`;
+                }
+            }
+
+            statusDiv.textContent = `Importação concluída!\nSucessos: ${successCount}\nErros: ${errorCount}.`;
+        });
+    </script>
+</body>
+</html>
