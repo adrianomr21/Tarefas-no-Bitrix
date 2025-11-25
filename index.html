@@ -268,6 +268,15 @@
         }
 
 
+        document.addEventListener('DOMContentLoaded', () => {
+            const savedWebhookUrl = localStorage.getItem('bitrixWebhookUrl');
+            if (savedWebhookUrl) {
+                webhookInput.value = savedWebhookUrl;
+                webhookInput.dispatchEvent(new Event('input'));
+            }
+        });
+
+
         webhookInput.addEventListener('input', () => {
             const url = webhookInput.value.trim();
             if (url) {
@@ -289,6 +298,7 @@
                             fileUploadSection.style.display = 'block';
                             statusSection.style.display = 'block';
                             statusDiv.textContent = 'Webhook processado com sucesso. EntityTypeId: ' + entityTypeId;
+                            localStorage.setItem('bitrixWebhookUrl', url);
                         } else {
                             statusDiv.textContent = 'Não foi possível extrair o EntityTypeId do URL do webhook. Verifique se o parâmetro `target` está presente.';
                         }
