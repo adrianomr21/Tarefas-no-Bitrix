@@ -200,6 +200,7 @@
             <h2>Passo 1: Conectar Webhook</h2>
             <label for="webhookInput">URL do Webhook</label>
             <input type="text" id="webhookInput" placeholder="https://seu-dominio.bitrix24.com.br/rest/" >
+            <!--  https://eadfeevale.bitrix24.com.br/rest/13/obt442cbbq46y4sm/crm.automation.trigger/?target=DYNAMIC_1068_{{ID}}&code=9hiaa  -->
         </div>
 
         <div class="step-card" id="file-upload-section">
@@ -384,6 +385,32 @@
 
         function displayMapping() {
             let mappingContent = '';
+            
+            const specialContactFields = [
+                { id: 'contact_email_header', label: 'E-mail do Contato (Obrigatório)' },
+                { id: 'contact_name_header', label: 'Nome do Contato' },
+                { id: 'contact_reg_code_header', label: 'Matrícula do Contato' }
+            ];
+
+            let fileHeaderOptions = '<option value="">Selecione a coluna...</option>';
+            fileHeaders.forEach(header => {
+                fileHeaderOptions += `<option value="${header}">${header}</option>`;
+            });
+
+            mappingContent += '<h3>Mapeamento de Dados do Contato</h3>'
+            specialContactFields.forEach(field => {
+                mappingContent += `
+                    <div class="mapping-row" style="background-color: var(--background-color); padding: 10px; border-radius: 6px;">
+                        <label for="${field.id}" style="font-weight: bold;">${field.label}</label>
+                        <select id="${field.id}">${fileHeaderOptions}</select>
+                    </div>
+                `;
+            });
+            
+            mappingContent += '<hr style="margin: 25px 0;">';
+            mappingContent += '<h3>Mapeamento de Campos do Item</h3>'
+
+
             fileHeaders.forEach((header, index) => {
                 let selectOptions = '<option value="">Não vincular</option>';
                 let autoSelected = false;
@@ -422,64 +449,44 @@
             console.clear(); // Clear console for new import
             console.log('--- Iniciando importação ---');
             statusDiv.textContent = 'Iniciando processo de importação...';
+            
+            // 1. Get explicit mappings for contact data from the new dropdowns
+            const sourceEmailHeader = document.getElementById('contact_email_header').value;
+            const sourceNameHeader = document.getElementById('contact_name_header').value;
+            const sourceRegCodeHeader = document.getElementById('contact_reg_code_header').value;
+
+            const destinationContactField = Object.keys(fieldMappings).find(header => {
+                const fieldKey = fieldMappings[header];
+                const def = bitrixFieldDefs[fieldKey];
+                return def && def.type === 'crm_contact';
+            }) ? fieldMappings[Object.keys(fieldMappings).find(header => bitrixFieldDefs[fieldMappings[header]].type === 'crm_contact')] : null;
+
+            console.log(`Cabeçalho do E-mail do Contato: '${sourceEmailHeader}'`);
+            console.log(`Cabeçalho do Nome do Contato: '${sourceNameHeader}'`);
+            console.log(`Cabeçalho da Matrícula do Contato: '${sourceRegCodeHeader}'`);
+            console.log(`Campo de destino do Contato: '${destinationContactField}'`);
+
+            // Validate that if a contact field is mapped, an email source is also provided.
+            if (destinationContactField && !sourceEmailHeader) {
+                const errorMsg = 'O campo "E-mail do Contato" é obrigatório quando um campo de contato do Bitrix é mapeado no item.';
+                statusDiv.textContent = errorMsg;
+                console.error(errorMsg);
+                return;
+            }
+
             let successCount = 0;
             let errorCount = 0;
-
             const emailToContactIdMap = new Map();
             const emailsToProcess = new Map();
 
-            let destinationContactField = null;
-            let sourceEmailFieldKey = null;
-            let sourceEmailHeader = null;
-
-            // 1. Find destination (crm_contact) and source (email) fields from mapping
-            for (const header in fieldMappings) {
-                const fieldKey = fieldMappings[header];
-                const def = bitrixFieldDefs[fieldKey];
-                if (!def) continue;
-
-                if (def.type === 'crm_contact') {
-                    destinationContactField = fieldKey;
-                }
-                
-                if (def.title.toLowerCase().includes('email') || fieldKey.toLowerCase().includes('email')) {
-                    if (def.type !== 'crm_contact') {
-                        sourceEmailFieldKey = fieldKey;
-                        sourceEmailHeader = header;
-                    }
-                }
-            }
-            
-            if (!sourceEmailFieldKey && destinationContactField) {
-                 for (const header in fieldMappings) {
-                    if (fieldMappings[header] === destinationContactField) {
-                         sourceEmailHeader = header;
-                         sourceEmailFieldKey = destinationContactField;
-                         break;
-                    }
-                }
-            }
-            
-            console.log(`Campo de destino do contato: ${destinationContactField}`);
-            console.log(`Campo de origem do e-mail: ${sourceEmailFieldKey} (do cabeçalho '${sourceEmailHeader}')`);
-
-            if (!destinationContactField) {
-                console.warn('Nenhum campo de destino do contato (tipo crm_contact) foi mapeado. A associação de contatos será ignorada.');
-            }
-            if (!sourceEmailHeader) {
-                 console.warn('Nenhum campo de origem de e-mail foi mapeado/identificado. Não é possível buscar contatos.');
-            }
-
-            // 1a. Collect emails from the source column
+            // 1a. Collect emails from the explicitly mapped source column
             if (sourceEmailHeader) {
                 const emailHeaderIndex = fileHeaders.indexOf(sourceEmailHeader);
                 if (emailHeaderIndex !== -1) {
                     fileRows.forEach((row) => {
                         const email = row[emailHeaderIndex];
                         if (email && email.includes('@')) {
-                            if (!emailsToProcess.has(email)) {
-                                emailsToProcess.set(email, null);
-                            }
+                            emailsToProcess.set(email.trim(), null);
                         }
                     });
                 }
@@ -525,9 +532,26 @@
                     if (emailsToCreate.size > 0) {
                         statusDiv.textContent += `\nCriando ${emailsToCreate.size} novos contatos...`;
                         const createContactsCmds = {};
+
+                        const sourceEmailHeaderIndex = fileHeaders.indexOf(sourceEmailHeader);
+                        const sourceNameHeaderIndex = sourceNameHeader ? fileHeaders.indexOf(sourceNameHeader) : -1;
+                        const sourceRegCodeHeaderIndex = sourceRegCodeHeader ? fileHeaders.indexOf(sourceRegCodeHeader) : -1;
+                        const regCodeFieldKeyOnContact = 'UF_CRM_1764081150774';
+
                         emailsToCreate.forEach(email => {
-                            const name = email.split('@')[0];
-                            createContactsCmds[email] = `crm.contact.add?fields[NAME]=${encodeURIComponent(name)}&fields[EMAIL][0][VALUE]=${encodeURIComponent(email)}&fields[EMAIL][0][VALUE_TYPE]=WORK`;
+                            const rowData = fileRows.find(r => r[sourceEmailHeaderIndex] && r[sourceEmailHeaderIndex].trim() === email);
+
+                            const name = (rowData && sourceNameHeaderIndex !== -1 && rowData[sourceNameHeaderIndex]) ? rowData[sourceNameHeaderIndex] : email.split('@')[0];
+                            const regCode = (rowData && sourceRegCodeHeaderIndex !== -1) ? rowData[sourceRegCodeHeaderIndex] : '';
+
+                            let command = `crm.contact.add?fields[NAME]=${encodeURIComponent(name)}&fields[EMAIL][0][VALUE]=${encodeURIComponent(email)}&fields[EMAIL][0][VALUE_TYPE]=WORK`;
+                            
+                            if (regCode) {
+                                command += `&fields[${regCodeFieldKeyOnContact}]=${encodeURIComponent(regCode)}`;
+                            }
+                            
+                            createContactsCmds[email] = command;
+                            console.log(`Comando para criar contato para ${email}: ${command}`);
                         });
 
                         console.log('Enviando requisição para criar novos contatos...', createContactsCmds);
