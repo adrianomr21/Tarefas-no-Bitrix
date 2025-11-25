@@ -419,47 +419,219 @@
                 return;
             }
 
-            statusDiv.textContent = 'Enviando itens para o Bitrix...';
+            console.clear(); // Clear console for new import
+            console.log('--- Iniciando importação ---');
+            statusDiv.textContent = 'Iniciando processo de importação...';
             let successCount = 0;
             let errorCount = 0;
+
+            const emailToContactIdMap = new Map();
+            const emailsToProcess = new Map();
+
+            let destinationContactField = null;
+            let sourceEmailFieldKey = null;
+            let sourceEmailHeader = null;
+
+            // 1. Find destination (crm_contact) and source (email) fields from mapping
+            for (const header in fieldMappings) {
+                const fieldKey = fieldMappings[header];
+                const def = bitrixFieldDefs[fieldKey];
+                if (!def) continue;
+
+                if (def.type === 'crm_contact') {
+                    destinationContactField = fieldKey;
+                }
+                
+                if (def.title.toLowerCase().includes('email') || fieldKey.toLowerCase().includes('email')) {
+                    if (def.type !== 'crm_contact') {
+                        sourceEmailFieldKey = fieldKey;
+                        sourceEmailHeader = header;
+                    }
+                }
+            }
             
+            if (!sourceEmailFieldKey && destinationContactField) {
+                 for (const header in fieldMappings) {
+                    if (fieldMappings[header] === destinationContactField) {
+                         sourceEmailHeader = header;
+                         sourceEmailFieldKey = destinationContactField;
+                         break;
+                    }
+                }
+            }
+            
+            console.log(`Campo de destino do contato: ${destinationContactField}`);
+            console.log(`Campo de origem do e-mail: ${sourceEmailFieldKey} (do cabeçalho '${sourceEmailHeader}')`);
+
+            if (!destinationContactField) {
+                console.warn('Nenhum campo de destino do contato (tipo crm_contact) foi mapeado. A associação de contatos será ignorada.');
+            }
+            if (!sourceEmailHeader) {
+                 console.warn('Nenhum campo de origem de e-mail foi mapeado/identificado. Não é possível buscar contatos.');
+            }
+
+            // 1a. Collect emails from the source column
+            if (sourceEmailHeader) {
+                const emailHeaderIndex = fileHeaders.indexOf(sourceEmailHeader);
+                if (emailHeaderIndex !== -1) {
+                    fileRows.forEach((row) => {
+                        const email = row[emailHeaderIndex];
+                        if (email && email.includes('@')) {
+                            if (!emailsToProcess.has(email)) {
+                                emailsToProcess.set(email, null);
+                            }
+                        }
+                    });
+                }
+                console.log('E-mails únicos para processar:', Array.from(emailsToProcess.keys()));
+                statusDiv.textContent = `Encontrados ${emailsToProcess.size} e-mails para processar.`;
+            }
+
+            if (emailsToProcess.size > 0) {
+                // 2. Find existing contacts
+                statusDiv.textContent = `Verificando ${emailsToProcess.size} e-mails de contatos no Bitrix...`;
+                const checkContactsCmds = {};
+                for (const email of emailsToProcess.keys()) {
+                    checkContactsCmds[email] = `crm.contact.list?filter[EMAIL]=${encodeURIComponent(email)}&select[]=ID`;
+                }
+
+                try {
+                    console.log('Enviando requisição para verificar contatos existentes...', checkContactsCmds);
+                    const checkResponse = await fetch(baseUrl + 'batch', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ cmd: checkContactsCmds })
+                    });
+                    const checkData = await checkResponse.json();
+                    console.log('Resposta da verificação de contatos:', checkData);
+
+                    const emailsToCreate = new Set();
+                    if (checkData.result && checkData.result.result) {
+                        const results = checkData.result.result;
+                        Object.keys(results).forEach(email => {
+                            if (results[email] && results[email].length > 0) {
+                                const contactId = results[email][0].ID;
+                                emailToContactIdMap.set(email, contactId);
+                                console.log(`Contato existente encontrado para ${email}: ID ${contactId}`);
+                            } else {
+                                emailsToCreate.add(email);
+                                console.log(`Nenhum contato encontrado para ${email}. Será criado.`);
+                            }
+                        });
+                    }
+                     statusDiv.textContent = `${emailToContactIdMap.size} contatos existentes encontrados. ${emailsToCreate.size} novos contatos a serem criados.`;
+
+                    // 3. Create new contacts
+                    if (emailsToCreate.size > 0) {
+                        statusDiv.textContent += `\nCriando ${emailsToCreate.size} novos contatos...`;
+                        const createContactsCmds = {};
+                        emailsToCreate.forEach(email => {
+                            const name = email.split('@')[0];
+                            createContactsCmds[email] = `crm.contact.add?fields[NAME]=${encodeURIComponent(name)}&fields[EMAIL][0][VALUE]=${encodeURIComponent(email)}&fields[EMAIL][0][VALUE_TYPE]=WORK`;
+                        });
+
+                        console.log('Enviando requisição para criar novos contatos...', createContactsCmds);
+                        const createResponse = await fetch(baseUrl + 'batch', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ cmd: createContactsCmds })
+                        });
+                        const createData = await createResponse.json();
+                        console.log('Resposta da criação de contatos:', createData);
+                        
+                        if (createData.result && createData.result.result) {
+                             const results = createData.result.result;
+                             Object.keys(results).forEach(email => {
+                                const contactId = results[email];
+                                if (contactId) {
+                                    emailToContactIdMap.set(email, contactId);
+                                    console.log(`Novo contato criado para ${email}: ID ${contactId}`);
+                                } else {
+                                    console.error(`Falha ao criar contato para ${email}. Resposta:`, results[email]);
+                                }
+                            });
+                        }
+                        statusDiv.textContent += `\n${emailsToCreate.size} novos contatos processados.`;
+                    }
+
+                } catch (e) {
+                    console.error('Erro no processamento de contatos:', e);
+                    statusDiv.textContent = 'Erro ao processar contatos: ' + e.message;
+                    return;
+                }
+            }
+            
+            console.log('Mapa final de E-mail -> ID do Contato:', emailToContactIdMap);
+
+            // 4. Prepare and send `crm.item.add` commands
+            statusDiv.textContent = 'Preparando a importação dos itens...';
+            console.log('--- Preparando itens para importação ---');
             const batchCommands = [];
-            for (const row of fileRows) {
+            for (const [rowIndex, row] of fileRows.entries()) {
                 const fields = {};
                 let hasMappedField = false;
+                
+                const sourceEmailHeaderIndex = sourceEmailHeader ? fileHeaders.indexOf(sourceEmailHeader) : -1;
+                const currentRowEmail = (sourceEmailHeaderIndex !== -1 && row[sourceEmailHeaderIndex]) ? row[sourceEmailHeaderIndex].trim() : null;
+
                 fileHeaders.forEach((header, idx) => {
-                    if (fieldMappings[header]) {
+                    const mappedField = fieldMappings[header];
+                    if (mappedField) {
                         hasMappedField = true;
-                        const mappedField = fieldMappings[header];
                         const def = bitrixFieldDefs[mappedField];
                         let value = row[idx] || '';
-                        
-                        if (def.type === 'enumeration' && value.trim() !== '') {
+
+                        if (mappedField === destinationContactField) {
+                             if (currentRowEmail && emailToContactIdMap.has(currentRowEmail)) {
+                                 const contactId = emailToContactIdMap.get(currentRowEmail);
+                                 if (def && def.isMultiple) {
+                                     value = [contactId];
+                                 } else {
+                                     value = contactId;
+                                 }
+                             } else {
+                                 value = (def && def.isMultiple) ? [] : '';
+                             }
+                        } else if (def && def.type === 'enumeration' && value.trim() !== '') {
                             const item = def.items.find(it => it.VALUE.toLowerCase() === value.toLowerCase());
                             value = item ? item.ID : '';
-                        } else if (def.type === 'boolean') {
+                        } else if (def && def.type === 'boolean') {
                             value = ['y', 'yes', 'true', '1'].includes(value.toLowerCase()) ? 'Y' : 'N';
                         }
                         fields[mappedField] = value;
                     }
                 });
 
-                if (!hasMappedField || Object.values(fields).every(v => v === '' || v === 'N')) {
+                if (!hasMappedField || Object.values(fields).every(v => v === '' || v === 'N' || (Array.isArray(v) && v.length === 0))) {
+                    console.log(`Linha ${rowIndex + 2}: Nenhum dado mapeado ou todos os campos estão vazios. Ignorando.`);
                     continue;
                 }
 
                 if (!fields.opened && bitrixFieldDefs.opened && bitrixFieldDefs.opened.isRequired) {
                     fields.opened = 'Y';
                 }
+                
+                console.log(`Linha ${rowIndex + 2}: Payload do item a ser criado:`, JSON.parse(JSON.stringify(fields)));
 
                 let command = `crm.item.add?entityTypeId=${entityTypeId}`;
                 for (const key in fields) {
-                    command += `&fields[${key}]=${encodeURIComponent(fields[key])}`;
+                    const value = fields[key];
+                    const def = bitrixFieldDefs[key];
+                     if (def && def.isMultiple && Array.isArray(value)) {
+                        value.forEach((item, index) => {
+                            command += `&fields[${key}][${index}]=${encodeURIComponent(item)}`;
+                        });
+                    } else {
+                        command += `&fields[${key}]=${encodeURIComponent(value)}`;
+                    }
                 }
                 batchCommands.push(command);
             }
 
-            // Processar em lotes de 50
+            statusDiv.textContent = `Enviando ${batchCommands.length} itens para o Bitrix...`;
+            console.log(`--- Enviando ${batchCommands.length} itens para o Bitrix ---`);
+            console.log('Comandos em lote:', batchCommands);
+
             for (let i = 0; i < batchCommands.length; i += 50) {
                 const batch = batchCommands.slice(i, i + 50);
                 const body = { cmd: batch };
@@ -470,27 +642,39 @@
                         body: JSON.stringify(body)
                     });
                     const data = await response.json();
-                    
+                    console.log(`Resposta do lote de itens [${i}-${i+batch.length-1}]:`, data);
+
                     if (data.result && data.result.result) {
-                        data.result.result.forEach(itemResult => {
-                            if (itemResult.item) {
+                        const results = Array.isArray(data.result.result) ? data.result.result : [];
+                        results.forEach((itemResult, resultIndex) => {
+                            if (itemResult && itemResult.item) {
                                 successCount++;
+                                console.log(`Item do lote ${i+resultIndex} criado com sucesso:`, itemResult.item);
                             } else {
                                 errorCount++;
+                                console.error(`Erro ao criar item do lote ${i+resultIndex}:`, itemResult);
                             }
                         });
+						if (!Array.isArray(data.result.result) && data.result.result_error) {
+                             errorCount += batch.length;
+                             console.error(`Erro no lote de itens [${i}-${i+batch.length-1}]:`, data.result.result_error);
+                        }
+
                     } else {
                         errorCount += batch.length;
+                        console.error(`Erro grave no lote de itens [${i}-${i+batch.length-1}]. Resposta:`, data);
                     }
                     statusDiv.textContent = `Processando... Sucessos: ${successCount}, Erros: ${errorCount}`;
 
                 } catch (e) {
                     errorCount += batch.length;
+                    console.error(`Erro na requisição de lote de itens [${i}-${i+batch.length-1}]:`, e);
                     statusDiv.textContent += `\nErro na requisição de lote: ${e.message}`;
                 }
             }
 
             statusDiv.textContent = `Importação concluída!\nSucessos: ${successCount}\nErros: ${errorCount}.`;
+            console.log('--- Importação concluída ---');
         });
     </script>
 </body>
