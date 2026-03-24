@@ -146,6 +146,7 @@
         }*/
 
         #file-upload-section,
+        #category-section,
         #mapping,
         #send-section,
         #status-section {
@@ -203,6 +204,14 @@
             <!--  https://eadfeevale.bitrix24.com.br/rest/13/obt442cbbq46y4sm/crm.automation.trigger/?target=DYNAMIC_1068_{{ID}}&code=9hiaa  -->
         </div>
 
+        <div class="step-card" id="category-section">
+            <h2>Passo 1.5: Selecionar Pipeline</h2>
+            <label for="categorySelect">Escolha o Pipeline (Categoria)</label>
+            <select id="categorySelect">
+                <option value="">Carregando pipelines...</option>
+            </select>
+        </div>
+
         <div class="step-card" id="file-upload-section">
             <h2>Passo 2: Carregar Arquivo</h2>
             <input type="file" id="fileInput" accept=".csv,.xlsx">
@@ -237,6 +246,8 @@
         const fileUploadSection = document.getElementById('file-upload-section');
         const fileInput = document.getElementById('fileInput');
         const importButton = document.getElementById('importButton');
+        const categorySection = document.getElementById('category-section');
+        const categorySelect = document.getElementById('categorySelect');
         const mappingDiv = document.getElementById('mapping');
         const sendSection = document.getElementById('send-section');
         const sendButton = document.getElementById('sendToBitrix');
@@ -295,10 +306,12 @@
                         }
                         
                         if (baseUrl && entityTypeId) {
+                            categorySection.style.display = 'block';
                             fileUploadSection.style.display = 'block';
                             statusSection.style.display = 'block';
                             statusDiv.textContent = 'Webhook processado com sucesso. EntityTypeId: ' + entityTypeId;
                             localStorage.setItem('bitrixWebhookUrl', url);
+                            fetchBitrixCategories();
                         } else {
                             statusDiv.textContent = 'Não foi possível extrair o EntityTypeId do URL do webhook. Verifique se o parâmetro `target` está presente.';
                         }
@@ -308,6 +321,34 @@
                 }
             }
         });
+
+        async function fetchBitrixCategories() {
+            const url = baseUrl + 'crm.category.list';
+            const body = { entityTypeId: parseInt(entityTypeId) };
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = await response.json();
+                if (data.result && data.result.categories) {
+                    categorySelect.innerHTML = '';
+                    data.result.categories.forEach(category => {
+                        const option = document.createElement('option');
+                        option.value = category.id;
+                        option.textContent = category.name;
+                        categorySelect.appendChild(option);
+                    });
+                } else {
+                    categorySelect.innerHTML = '<option value="0">Default</option>';
+                    console.error('Erro ao carregar pipelines:', data);
+                }
+            } catch (e) {
+                categorySelect.innerHTML = '<option value="0">Erro ao carregar</option>';
+                console.error('Erro na requisição de pipelines:', e);
+            }
+        }
 
         importButton.addEventListener('click', () => {
             if (fileInput.files.length > 0) {
@@ -643,6 +684,10 @@
 
                 if (!fields.opened && bitrixFieldDefs.opened && bitrixFieldDefs.opened.isRequired) {
                     fields.opened = 'Y';
+                }
+
+                if (categorySelect.value) {
+                    fields.categoryId = categorySelect.value;
                 }
                 
                 console.log(`Linha ${rowIndex + 2}: Payload do item a ser criado:`, JSON.parse(JSON.stringify(fields)));
