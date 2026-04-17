@@ -199,9 +199,14 @@
 
         <div class="step-card">
             <h2>Passo 1: Conectar Webhook</h2>
-            <label for="webhookInput">URL do Webhook</label>
-            <input type="text" id="webhookInput" placeholder="https://seu-dominio.bitrix24.com.br/rest/" >
-            <!--  https://eadfeevale.bitrix24.com.br/rest/13/obt442cbbq46y4sm/crm.automation.trigger/?target=DYNAMIC_1068_{{ID}}&code=9hiaa  -->
+            <div style="margin-bottom: 15px;">
+                <label for="webhookInput">URL do Webhook</label>
+                <input type="text" id="webhookInput" placeholder="https://seu-dominio.bitrix24.com.br/rest/1/abcde12345/" >
+            </div>
+            <div>
+                <label for="spaIdInput">ID do SPA (Entity Type ID)</label>
+                <input type="text" id="spaIdInput" placeholder="Ex: 1068" >
+            </div>
         </div>
 
         <div class="step-card" id="category-section">
@@ -230,6 +235,7 @@
         <div class="step-card" id="status-section">
             <h2>Status da Importação</h2>
             <div id="status">Aguardando início...</div>
+            <button id="downloadLog" style="display: none; background-color: var(--secondary-color); margin-top: 10px;">Baixar Relatório Log (.txt)</button>
         </div>
     </div>
 
@@ -241,8 +247,10 @@
         let bitrixFieldDefs = {};
         let bitrixFields = [];
         let fieldMappings = {};
+        let importLog = [];
 
         const webhookInput = document.getElementById('webhookInput');
+        const spaIdInput = document.getElementById('spaIdInput');
         const fileUploadSection = document.getElementById('file-upload-section');
         const fileInput = document.getElementById('fileInput');
         const importButton = document.getElementById('importButton');
@@ -254,6 +262,7 @@
         const statusSection = document.getElementById('status-section');
         const statusDiv = document.getElementById('status');
         const themeSwitcher = document.getElementById('theme-switcher');
+        const downloadLogBtn = document.getElementById('downloadLog');
 
         function setTheme(theme) {
             document.documentElement.setAttribute('data-theme', theme);
@@ -281,46 +290,74 @@
 
         document.addEventListener('DOMContentLoaded', () => {
             const savedWebhookUrl = localStorage.getItem('bitrixWebhookUrl');
+            const savedSpaId = localStorage.getItem('bitrixSpaId');
+            
             if (savedWebhookUrl) {
                 webhookInput.value = savedWebhookUrl;
-                webhookInput.dispatchEvent(new Event('input'));
+            }
+            if (savedSpaId) {
+                spaIdInput.value = savedSpaId;
+            }
+            
+            if (savedWebhookUrl || savedSpaId) {
+                validateAndProcessConnection();
             }
         });
 
-
-        webhookInput.addEventListener('input', () => {
+        function validateAndProcessConnection() {
             const url = webhookInput.value.trim();
+            const spaId = spaIdInput.value.trim();
+            
+            baseUrl = '';
+            entityTypeId = '';
+            
+            // Oculta as seções por padrão até que a validação via API passe
+            categorySection.style.display = 'none';
+            fileUploadSection.style.display = 'none';
+            mappingDiv.style.display = 'none';
+            sendSection.style.display = 'none';
+            
             if (url) {
                 try {
                     const urlObj = new URL(url);
                     const pathParts = urlObj.pathname.split('/');
                     const restIndex = pathParts.indexOf('rest');
+                    
                     if (restIndex !== -1 && pathParts.length > restIndex + 2) {
                         const user = pathParts[restIndex + 1];
                         const token = pathParts[restIndex + 2];
                         baseUrl = `${urlObj.origin}/rest/${user}/${token}/`;
                         
-                        const target = urlObj.searchParams.get('target');
-                        if (target && target.startsWith('DYNAMIC_')) {
-                            entityTypeId = target.split('_')[1].split('_')[0];
+                        // Tenta extrair ID do SPA do URL se o campo manual estiver vazio
+                        if (!spaId) {
+                            const target = urlObj.searchParams.get('target');
+                            if (target && target.startsWith('DYNAMIC_')) {
+                                entityTypeId = target.split('_')[1].split('_')[0];
+                                spaIdInput.value = entityTypeId;
+                            }
+                        } else {
+                            entityTypeId = spaId;
                         }
                         
-                        if (baseUrl && entityTypeId) {
-                            categorySection.style.display = 'block';
-                            fileUploadSection.style.display = 'block';
-                            statusSection.style.display = 'block';
-                            statusDiv.textContent = 'Webhook processado com sucesso. EntityTypeId: ' + entityTypeId;
-                            localStorage.setItem('bitrixWebhookUrl', url);
+                        if (baseUrl && entityTypeId && !isNaN(parseInt(entityTypeId))) {
+                            statusDiv.textContent = 'Validando conexão com o Bitrix...';
                             fetchBitrixCategories();
                         } else {
-                            statusDiv.textContent = 'Não foi possível extrair o EntityTypeId do URL do webhook. Verifique se o parâmetro `target` está presente.';
+                            statusDiv.textContent = 'Aguardando um ID do SPA válido.';
                         }
+                    } else {
+                        statusDiv.textContent = 'URL do Webhook incompleta. Certifique-se de que é a URL do Webhook de entrada.';
                     }
                 } catch (e) {
                     statusDiv.textContent = 'URL do Webhook inválida.';
                 }
+            } else {
+                statusDiv.textContent = 'Aguardando a URL do Webhook e o ID do SPA.';
             }
-        });
+        }
+
+        webhookInput.addEventListener('input', validateAndProcessConnection);
+        spaIdInput.addEventListener('input', validateAndProcessConnection);
 
         async function fetchBitrixCategories() {
             const url = baseUrl + 'crm.category.list';
@@ -332,7 +369,17 @@
                     body: JSON.stringify(body)
                 });
                 const data = await response.json();
+                
                 if (data.result && data.result.categories) {
+                    // CONEXÃO VALIDADA! Agora mostramos os próximos passos
+                    categorySection.style.display = 'block';
+                    fileUploadSection.style.display = 'block';
+                    statusSection.style.display = 'block';
+                    statusDiv.textContent = 'Conexão validada com sucesso! EntityTypeId: ' + entityTypeId;
+                    
+                    localStorage.setItem('bitrixWebhookUrl', webhookInput.value.trim());
+                    localStorage.setItem('bitrixSpaId', entityTypeId);
+
                     categorySelect.innerHTML = '';
                     data.result.categories.forEach(category => {
                         const option = document.createElement('option');
@@ -341,12 +388,15 @@
                         categorySelect.appendChild(option);
                     });
                 } else {
-                    categorySelect.innerHTML = '<option value="0">Default</option>';
-                    console.error('Erro ao carregar pipelines:', data);
+                    const errorMsg = data.error_description || (data.error ? JSON.stringify(data.error) : 'ID do SPA ou Webhook incorretos.');
+                    statusDiv.textContent = 'Erro na conexão: ' + errorMsg;
+                    categorySection.style.display = 'none';
+                    fileUploadSection.style.display = 'none';
                 }
             } catch (e) {
-                categorySelect.innerHTML = '<option value="0">Erro ao carregar</option>';
-                console.error('Erro na requisição de pipelines:', e);
+                statusDiv.textContent = 'Falha na requisição: Verifique a URL do Webhook ou sua conexão.';
+                categorySection.style.display = 'none';
+                fileUploadSection.style.display = 'none';
             }
         }
 
@@ -438,22 +488,25 @@
             let mappingContent = '';
             
             const specialContactFields = [
-                { id: 'contact_email_header', label: 'E-mail do Contato (Obrigatório)' },
-                { id: 'contact_name_header', label: 'Nome do Contato' },
-                { id: 'contact_reg_code_header', label: 'Matrícula do Contato' }
+                { id: 'contact_email_header', label: 'E-mail do Contato (Obrigatório)', matches: ['e-mail do contato (obrigatório)', 'e-mail do contato', 'email'] },
+                { id: 'contact_name_header', label: 'Nome do Contato', matches: ['contato', 'nome do contato', 'nome'] },
+                { id: 'contact_reg_code_header', label: 'Matrícula do Contato', matches: ['matrícula do contato', 'matricula do contato', 'matrícula'] }
             ];
 
-            let fileHeaderOptions = '<option value="">Selecione a coluna...</option>';
-            fileHeaders.forEach(header => {
-                fileHeaderOptions += `<option value="${header}">${header}</option>`;
-            });
-
             mappingContent += '<h3>Mapeamento de Dados do Contato (Cadastrar Contatos)</h3>'
+            
             specialContactFields.forEach(field => {
+                let options = '<option value="">Selecione a coluna...</option>';
+                fileHeaders.forEach(header => {
+                    const isMatch = field.matches.includes(header.toLowerCase());
+                    const selected = isMatch ? ' selected' : '';
+                    options += `<option value="${header}"${selected}>${header}</option>`;
+                });
+
                 mappingContent += `
                     <div class="mapping-row" style="background-color: var(--background-color); padding: 10px; border-radius: 6px;">
                         <label for="${field.id}" style="font-weight: bold;">${field.label}</label>
-                        <select id="${field.id}">${fileHeaderOptions}</select>
+                        <select id="${field.id}">${options}</select>
                     </div>
                 `;
             });
@@ -500,6 +553,8 @@
             console.clear(); // Clear console for new import
             console.log('--- Iniciando importação ---');
             statusDiv.textContent = 'Iniciando processo de importação...';
+            importLog = [`Relatório de Importação Bitrix24 - ${new Date().toLocaleString()}`, '---'];
+            downloadLogBtn.style.display = 'none';
             
             // 1. Get explicit mappings for contact data from the new dropdowns
             const sourceEmailHeader = document.getElementById('contact_email_header').value;
@@ -642,12 +697,18 @@
             statusDiv.textContent = 'Preparando a importação dos itens...';
             console.log('--- Preparando itens para importação ---');
             const batchCommands = [];
+            const rowIdentities = []; 
+
             for (const [rowIndex, row] of fileRows.entries()) {
                 const fields = {};
                 let hasMappedField = false;
                 
                 const sourceEmailHeaderIndex = sourceEmailHeader ? fileHeaders.indexOf(sourceEmailHeader) : -1;
                 const currentRowEmail = (sourceEmailHeaderIndex !== -1 && row[sourceEmailHeaderIndex]) ? row[sourceEmailHeaderIndex].trim() : null;
+
+                // Tenta pegar um identificador da linha (ex: E-mail ou Linha X)
+                const rowIdLabel = currentRowEmail || `Linha ${rowIndex + 2}`;
+                rowIdentities.push(rowIdLabel);
 
                 fileHeaders.forEach((header, idx) => {
                     const mappedField = fieldMappings[header];
@@ -713,6 +774,7 @@
 
             for (let i = 0; i < batchCommands.length; i += 50) {
                 const batch = batchCommands.slice(i, i + 50);
+                const currentIdentities = rowIdentities.slice(i, i + 50);
                 const body = { cmd: batch };
                 try {
                     const response = await fetch(baseUrl + 'batch', {
@@ -721,39 +783,60 @@
                         body: JSON.stringify(body)
                     });
                     const data = await response.json();
-                    console.log(`Resposta do lote de itens [${i}-${i+batch.length-1}]:`, data);
 
                     if (data.result && data.result.result) {
-                        const results = Array.isArray(data.result.result) ? data.result.result : [];
+                        const results = Array.isArray(data.result.result) ? data.result.result : Object.values(data.result.result);
+                        
                         results.forEach((itemResult, resultIndex) => {
+                            const identity = currentIdentities[resultIndex];
                             if (itemResult && itemResult.item) {
                                 successCount++;
-                                console.log(`Item do lote ${i+resultIndex} criado com sucesso:`, itemResult.item);
+                                importLog.push(`[SUCESSO] ${identity}: Item ID ${itemResult.item.id} criado.`);
                             } else {
                                 errorCount++;
-                                console.error(`Erro ao criar item do lote ${i+resultIndex}:`, itemResult);
+                                const errorDetail = data.result.result_error && data.result.result_error[resultIndex] 
+                                    ? data.result.result_error[resultIndex].error_description 
+                                    : 'Erro desconhecido';
+                                importLog.push(`[ERRO] ${identity}: ${errorDetail}`);
                             }
                         });
-						if (!Array.isArray(data.result.result) && data.result.result_error) {
-                             errorCount += batch.length;
-                             console.error(`Erro no lote de itens [${i}-${i+batch.length-1}]:`, data.result.result_error);
-                        }
 
-                    } else {
+                    } else if (data.error) {
                         errorCount += batch.length;
-                        console.error(`Erro grave no lote de itens [${i}-${i+batch.length-1}]. Resposta:`, data);
+                        currentIdentities.forEach(identity => {
+                            importLog.push(`[ERRO LOTE] ${identity}: ${data.error_description || data.error}`);
+                        });
                     }
                     statusDiv.textContent = `Processando... Sucessos: ${successCount}, Erros: ${errorCount}`;
 
                 } catch (e) {
                     errorCount += batch.length;
-                    console.error(`Erro na requisição de lote de itens [${i}-${i+batch.length-1}]:`, e);
+                    currentIdentities.forEach(identity => {
+                        importLog.push(`[FALHA REQUISIÇÃO] ${identity}: ${e.message}`);
+                    });
                     statusDiv.textContent += `\nErro na requisição de lote: ${e.message}`;
                 }
             }
 
             statusDiv.textContent = `Importação concluída!\nSucessos: ${successCount}\nErros: ${errorCount}.`;
+            importLog.push('---');
+            importLog.push(`Total de Sucessos: ${successCount}`);
+            importLog.push(`Total de Erros: ${errorCount}`);
+            
+            downloadLogBtn.style.display = 'block';
             console.log('--- Importação concluída ---');
+        });
+
+        downloadLogBtn.addEventListener('click', () => {
+            const blob = new Blob([importLog.join('\n')], { type: 'text/plain' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `log_importacao_${new Date().getTime()}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
         });
     </script>
 </body>
