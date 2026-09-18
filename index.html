@@ -54,7 +54,7 @@
         
         .container {
             width: 100%;
-            max-width: 850px;
+            max-width: 1500px;
             background-color: var(--card-background);
             border-radius: 8px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.08);
@@ -171,11 +171,152 @@
         #mapping .mapping-row label {
             font-weight: normal;
             margin-bottom: 0;
-            flex-basis: 45%;
+            /*flex-basis: 45%;*/
         }
         
         #mapping .mapping-row select {
             flex-basis: 50%;
+        }
+
+        /* Mapeamento de Itens (Campo Bitrix à esquerda, Dropdown de colunas à direita) */
+        #mapping .mapping-row.item-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 15px;
+        }
+
+        #mapping .mapping-row.item-row .field-info {
+            flex-basis: 48%;
+            width: 48%;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        #mapping .mapping-row.item-row select {
+            flex-basis: 50%;
+            width: 50%;
+        }
+
+        #mapping .mapping-row.item-row .field-title {
+            font-weight: 500;
+            margin-bottom: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            display: inline-block;
+            max-width: 85%;
+        }
+
+        .btn-eye {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 4px 6px;
+            font-size: 1.15em;
+            border-radius: 4px;
+            margin: 0;
+            width: auto;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--secondary-color);
+            transition: background-color 0.2s, transform 0.1s;
+            flex-shrink: 0;
+        }
+
+        .btn-eye:hover {
+            background-color: rgba(108, 117, 125, 0.2);
+            filter: none;
+        }
+
+        .mapping-table-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: var(--background-color);
+            border: 1px solid var(--border-color);
+            padding: 10px 15px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            gap: 15px;
+        }
+
+        .mapping-table-header .header-col-left {
+            flex-basis: 48%;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .mapping-table-header .header-col-right {
+            flex-basis: 50%;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .mapping-table-header .header-title {
+            font-weight: 600;
+            font-size: 0.95em;
+            color: var(--text-color);
+        }
+
+        .mapping-table-header .header-subtitle {
+            font-size: 0.8em;
+            color: var(--secondary-color);
+        }
+
+        .hidden-fields-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: var(--background-color);
+            border: 1px solid var(--border-color);
+            padding: 10px 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-size: 0.9em;
+        }
+
+        .hidden-fields-bar .btn-action {
+            width: auto;
+            margin-top: 0;
+            display: inline-block;
+            padding: 6px 14px;
+            font-size: 0.85em;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+
+        .btn-secondary {
+            background-color: var(--secondary-color) !important;
+        }
+
+        .mapping-row.is-hidden {
+            opacity: 0.65;
+            background-color: rgba(108, 117, 125, 0.08);
+            border-radius: 6px;
+            padding: 8px 12px;
+            margin-bottom: 10px;
+            border: 1px dashed var(--secondary-color);
+        }
+
+        @media (max-width: 600px) {
+            .mapping-table-header {
+                display: none;
+            }
+            #mapping .mapping-row.item-row {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            #mapping .mapping-row.item-row select,
+            #mapping .mapping-row.item-row .field-info {
+                flex-basis: 100%;
+                width: 100%;
+                max-width: 100%;
+            }
         }
 
         #status {
@@ -484,6 +625,65 @@
             }
         }
 
+        let showHiddenFields = false;
+
+        function getStorageKey(suffix) {
+            return 'bitrix_' + suffix + '_' + (entityTypeId || 'default');
+        }
+
+        function getHiddenFields() {
+            try {
+                return JSON.parse(localStorage.getItem(getStorageKey('hidden_fields'))) || [];
+            } catch (e) {
+                return [];
+            }
+        }
+
+        function saveHiddenFields(hiddenList) {
+            localStorage.setItem(getStorageKey('hidden_fields'), JSON.stringify(hiddenList));
+        }
+
+        function getSavedFieldMappings() {
+            try {
+                return JSON.parse(localStorage.getItem(getStorageKey('field_mappings'))) || {};
+            } catch (e) {
+                return {};
+            }
+        }
+
+        function saveSavedFieldMappings(mappings) {
+            localStorage.setItem(getStorageKey('field_mappings'), JSON.stringify(mappings));
+        }
+
+        function getSavedContactMappings() {
+            try {
+                return JSON.parse(localStorage.getItem(getStorageKey('contact_mappings'))) || {};
+            } catch (e) {
+                return {};
+            }
+        }
+
+        function saveSavedContactMappings(mappings) {
+            localStorage.setItem(getStorageKey('contact_mappings'), JSON.stringify(mappings));
+        }
+
+        function getSortedBitrixFields() {
+            return [...bitrixFields].sort((a, b) => {
+                if (a === 'title') return -1;
+                if (b === 'title') return 1;
+
+                const isUserFieldA = a.toLowerCase().startsWith('uf') || (bitrixFieldDefs[a] && bitrixFieldDefs[a].isUserField);
+                const isUserFieldB = b.toLowerCase().startsWith('uf') || (bitrixFieldDefs[b] && bitrixFieldDefs[b].isUserField);
+
+                if (isUserFieldA && !isUserFieldB) return -1;
+                if (!isUserFieldA && isUserFieldB) return 1;
+
+                const titleA = (bitrixFieldDefs[a]?.title || a).toLowerCase();
+                const titleB = (bitrixFieldDefs[b]?.title || b).toLowerCase();
+                return titleA.localeCompare(titleB);
+            });
+        }
+
         function displayMapping() {
             let mappingContent = '';
             
@@ -493,55 +693,214 @@
                 { id: 'contact_reg_code_header', label: 'Matrícula do Contato', matches: ['matrícula do contato', 'matricula do contato', 'matrícula'] }
             ];
 
-            mappingContent += '<h3>Mapeamento de Dados do Contato (Cadastrar Contatos)</h3>'
+            const savedContactMappings = getSavedContactMappings();
+
+            mappingContent += '<h3>Mapeamento de Dados do Contato (Cadastrar Contatos)</h3>';
             
             specialContactFields.forEach(field => {
                 let options = '<option value="">Selecione a coluna...</option>';
+                const savedVal = savedContactMappings[field.id];
+
                 fileHeaders.forEach(header => {
-                    const isMatch = field.matches.includes(header.toLowerCase());
-                    const selected = isMatch ? ' selected' : '';
+                    let isSelected = false;
+                    if (savedVal) {
+                        isSelected = (savedVal === header);
+                    } else {
+                        isSelected = field.matches.includes(header.toLowerCase());
+                    }
+                    const selected = isSelected ? ' selected' : '';
                     options += `<option value="${header}"${selected}>${header}</option>`;
                 });
 
                 mappingContent += `
                     <div class="mapping-row" style="background-color: var(--background-color); padding: 10px; border-radius: 6px;">
                         <label for="${field.id}" style="font-weight: bold;">${field.label}</label>
-                        <select id="${field.id}">${options}</select>
+                        <select id="${field.id}" class="contact-mapping-select">${options}</select>
                     </div>
                 `;
             });
             
             mappingContent += '<hr style="margin: 25px 0;">';
-            mappingContent += '<h3>Mapeamento de Campos do Item (Criação dos cards)</h3>'
+            mappingContent += '<h3>Mapeamento de Campos do Item (Criação dos cards)</h3>';
+            mappingContent += '<div id="item-mapping-container"></div>';
 
-
-            fileHeaders.forEach((header, index) => {
-                let selectOptions = '<option value="">Não vincular</option>';
-                let autoSelected = false;
-                bitrixFields.forEach(field => {
-                    const fieldTitle = bitrixFieldDefs[field].title || field;
-                    const selected = !autoSelected && fieldTitle.toLowerCase() === header.toLowerCase() ? ' selected' : '';
-                    if (selected) autoSelected = true;
-                    selectOptions += `<option value="${field}"${selected}>${fieldTitle}</option>`;
-                });
-                mappingContent += `
-                    <div class="mapping-row">
-                        <label for="map_${index}">${header}</label>
-                        <select id="map_${index}">${selectOptions}</select>
-                    </div>
-                `;
-            });
             mappingDiv.innerHTML = '<h2>Passo 3: Mapear Campos</h2>' + mappingContent;
             mappingDiv.style.display = 'block';
             sendSection.style.display = 'block';
+
+            document.querySelectorAll('.contact-mapping-select').forEach(select => {
+                select.addEventListener('change', () => {
+                    const saved = getSavedContactMappings();
+                    saved[select.id] = select.value;
+                    saveSavedContactMappings(saved);
+                });
+            });
+
+            renderItemMapping();
+        }
+
+        function renderItemMapping() {
+            const container = document.getElementById('item-mapping-container');
+            if (!container) return;
+
+            const hiddenFields = getHiddenFields();
+            const savedMappings = getSavedFieldMappings();
+            const sortedFields = getSortedBitrixFields();
+            const hiddenCount = hiddenFields.length;
+
+            let html = '';
+
+            // Barra de campos ocultos
+            html += `
+                <div class="hidden-fields-bar" style="${hiddenCount > 0 ? 'display: flex;' : 'display: none;'}">
+                    <div>
+                        <span>👁️ <strong id="hidden-count">${hiddenCount}</strong> campo(s) oculto(s)</span>
+                    </div>
+                    <div>
+                        <button type="button" id="btn-toggle-hidden" class="btn-action btn-secondary" style="margin-right: 6px;">
+                            ${showHiddenFields ? 'Esconder ocultos' : 'Exibir ocultos'}
+                        </button>
+                        <button type="button" id="btn-restore-all-hidden" class="btn-action btn-secondary">
+                            Restaurar todos
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            // Cabeçalho das Colunas (destaque visual claro entre Bitrix e Planilha)
+            html += `
+                <div class="mapping-table-header">
+                    <div class="header-col-left">
+                        <span class="header-title">📋 Campo no Bitrix24</span>
+                        <span class="header-subtitle">Campos personalizados do SPA (Destino)</span>
+                    </div>
+                    <div class="header-col-right">
+                        <span class="header-title">📊 Coluna da Planilha</span>
+                        <span class="header-subtitle">Origem dos dados importados</span>
+                    </div>
+                </div>
+            `;
+
+            sortedFields.forEach(field => {
+                const isHidden = hiddenFields.includes(field);
+                if (isHidden && !showHiddenFields) {
+                    return;
+                }
+
+                const fieldDef = bitrixFieldDefs[field] || {};
+                const fieldTitle = fieldDef.title || field;
+
+                // Definir coluna selecionada:
+                // 1. Memória salva (localStorage)
+                let selectedCol = '';
+                const savedCol = savedMappings[field];
+                if (savedCol && fileHeaders.includes(savedCol)) {
+                    selectedCol = savedCol;
+                } else if (!savedCol) {
+                    // 2. Fallback: nome idêntico
+                    const match = fileHeaders.find(h => h.trim().toLowerCase() === fieldTitle.trim().toLowerCase());
+                    if (match) {
+                        selectedCol = match;
+                    }
+                }
+
+                let selectOptions = '<option value="">Não vincular</option>';
+                fileHeaders.forEach(header => {
+                    const selected = (!isHidden && header === selectedCol) ? ' selected' : '';
+                    selectOptions += `<option value="${header}"${selected}>${header}</option>`;
+                });
+
+                html += `
+                    <div class="mapping-row item-row ${isHidden ? 'is-hidden' : ''}" id="row_${field}">
+                        <div class="field-info">
+                            <button type="button" class="btn-eye" data-field="${field}" title="${isHidden ? 'Desocultar campo' : 'Ocultar campo'}">
+                                ${isHidden ? '🙈' : '👁️'}
+                            </button>
+                            <label for="map_${field}" class="field-title" title="${field} (${fieldDef.type || 'campo'})">
+                                ${fieldTitle}${fieldDef.isRequired ? ' <span style="color: var(--error-color);">*</span>' : ''}
+                            </label>
+                        </div>
+                        <select id="map_${field}" class="item-mapping-select" data-field="${field}" ${isHidden ? 'disabled' : ''}>
+                            ${selectOptions}
+                        </select>
+                    </div>
+                `;
+            });
+
+            container.innerHTML = html;
+
+            // Event Listeners:
+            // 1. Alteração nos selects dos campos
+            container.querySelectorAll('.item-mapping-select').forEach(select => {
+                select.addEventListener('change', (e) => {
+                    const fKey = e.target.dataset.field;
+                    const col = e.target.value;
+                    const mappings = getSavedFieldMappings();
+                    if (col) {
+                        mappings[fKey] = col;
+                    } else {
+                        delete mappings[fKey];
+                    }
+                    saveSavedFieldMappings(mappings);
+                });
+            });
+
+            // 2. Botão de olho (ocultar / desocultar)
+            container.querySelectorAll('.btn-eye').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const fKey = btn.dataset.field;
+                    let hidden = getHiddenFields();
+                    if (hidden.includes(fKey)) {
+                        // Desocultar
+                        hidden = hidden.filter(k => k !== fKey);
+                        saveHiddenFields(hidden);
+                    } else {
+                        // Ocultar
+                        hidden.push(fKey);
+                        saveHiddenFields(hidden);
+                        // Limpar mapeamento do campo ao ocultar
+                        const mappings = getSavedFieldMappings();
+                        delete mappings[fKey];
+                        saveSavedFieldMappings(mappings);
+                    }
+                    renderItemMapping();
+                });
+            });
+
+            // 3. Alternar exibição de ocultos
+            const btnToggleHidden = document.getElementById('btn-toggle-hidden');
+            if (btnToggleHidden) {
+                btnToggleHidden.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    showHiddenFields = !showHiddenFields;
+                    renderItemMapping();
+                });
+            }
+
+            // 4. Restaurar todos os ocultos
+            const btnRestoreAll = document.getElementById('btn-restore-all-hidden');
+            if (btnRestoreAll) {
+                btnRestoreAll.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    if (confirm('Deseja desocultar todos os campos?')) {
+                        saveHiddenFields([]);
+                        showHiddenFields = false;
+                        renderItemMapping();
+                    }
+                });
+            }
         }
 
         sendButton.addEventListener('click', async () => {
             fieldMappings = {};
-            fileHeaders.forEach((header, index) => {
-                const select = document.getElementById('map_' + index);
-                if (select.value) {
-                    fieldMappings[header] = select.value;
+            const hiddenFields = getHiddenFields();
+
+            bitrixFields.forEach(fieldKey => {
+                if (hiddenFields.includes(fieldKey)) return;
+                const select = document.getElementById('map_' + fieldKey);
+                if (select && select.value) {
+                    fieldMappings[fieldKey] = select.value;
                 }
             });
 
@@ -561,11 +920,10 @@
             const sourceNameHeader = document.getElementById('contact_name_header').value;
             const sourceRegCodeHeader = document.getElementById('contact_reg_code_header').value;
 
-            const destinationContactField = Object.keys(fieldMappings).find(header => {
-                const fieldKey = fieldMappings[header];
+            const destinationContactField = Object.keys(fieldMappings).find(fieldKey => {
                 const def = bitrixFieldDefs[fieldKey];
                 return def && def.type === 'crm_contact';
-            }) ? fieldMappings[Object.keys(fieldMappings).find(header => bitrixFieldDefs[fieldMappings[header]].type === 'crm_contact')] : null;
+            }) || null;
 
             console.log(`Cabeçalho do E-mail do Contato: '${sourceEmailHeader}'`);
             console.log(`Cabeçalho do Nome do Contato: '${sourceNameHeader}'`);
@@ -710,14 +1068,15 @@
                 const rowIdLabel = currentRowEmail || `Linha ${rowIndex + 2}`;
                 rowIdentities.push(rowIdLabel);
 
-                fileHeaders.forEach((header, idx) => {
-                    const mappedField = fieldMappings[header];
-                    if (mappedField) {
+                for (const fieldKey in fieldMappings) {
+                    const header = fieldMappings[fieldKey];
+                    const idx = fileHeaders.indexOf(header);
+                    if (idx !== -1) {
                         hasMappedField = true;
-                        const def = bitrixFieldDefs[mappedField];
-                        let value = row[idx] || '';
+                        const def = bitrixFieldDefs[fieldKey];
+                        let value = row[idx] !== undefined && row[idx] !== null ? String(row[idx]).trim() : '';
 
-                        if (mappedField === destinationContactField) {
+                        if (fieldKey === destinationContactField) {
                              if (currentRowEmail && emailToContactIdMap.has(currentRowEmail)) {
                                  const contactId = emailToContactIdMap.get(currentRowEmail);
                                  if (def && def.isMultiple) {
@@ -728,15 +1087,15 @@
                              } else {
                                  value = (def && def.isMultiple) ? [] : '';
                              }
-                        } else if (def && def.type === 'enumeration' && value.trim() !== '') {
-                            const item = def.items.find(it => it.VALUE.toLowerCase() === value.toLowerCase());
+                        } else if (def && def.type === 'enumeration' && value !== '') {
+                            const item = def.items && def.items.find(it => it.VALUE.toLowerCase() === value.toLowerCase());
                             value = item ? item.ID : '';
                         } else if (def && def.type === 'boolean') {
-                            value = ['y', 'yes', 'true', '1'].includes(value.toLowerCase()) ? 'Y' : 'N';
+                            value = ['y', 'yes', 'true', '1', 'sim'].includes(value.toLowerCase()) ? 'Y' : 'N';
                         }
-                        fields[mappedField] = value;
+                        fields[fieldKey] = value;
                     }
-                });
+                }
 
                 if (!hasMappedField || Object.values(fields).every(v => v === '' || v === 'N' || (Array.isArray(v) && v.length === 0))) {
                     console.log(`Linha ${rowIndex + 2}: Nenhum dado mapeado ou todos os campos estão vazios. Ignorando.`);
