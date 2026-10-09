@@ -148,6 +148,7 @@
         #file-upload-section,
         #category-section,
         #mapping,
+        #preview-section,
         #send-section,
         #status-section {
             display: none;
@@ -319,6 +320,127 @@
             }
         }
 
+        /* Passo 4 - Tabela de Pré-visualização e Edição */
+        .preview-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 12px;
+            background-color: var(--background-color);
+            padding: 10px 14px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+        }
+
+        .preview-stats {
+            font-size: 0.95em;
+            font-weight: 500;
+        }
+
+        .preview-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn-sm {
+            width: auto !important;
+            margin-top: 0 !important;
+            padding: 6px 12px !important;
+            font-size: 0.85em !important;
+            border-radius: 4px !important;
+            display: inline-block !important;
+            cursor: pointer;
+        }
+
+        .preview-table-container {
+            max-height: 480px;
+            overflow: auto;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background-color: var(--card-background);
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .preview-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9em;
+            text-align: left;
+        }
+
+        .preview-table thead th {
+            position: sticky;
+            top: 0;
+            background-color: var(--background-color);
+            z-index: 3;
+            padding: 10px 8px;
+            border-bottom: 2px solid var(--border-color);
+            white-space: nowrap;
+            font-weight: 600;
+        }
+
+        .preview-table tbody td {
+            padding: 4px 6px;
+            border-bottom: 1px solid var(--border-color);
+            vertical-align: middle;
+        }
+
+        .preview-table tbody tr:hover {
+            background-color: rgba(0, 123, 255, 0.04);
+        }
+
+        .preview-table tbody tr.row-disabled {
+            opacity: 0.45;
+            background-color: rgba(108, 117, 125, 0.08);
+        }
+
+        .preview-table tbody tr.row-disabled td {
+            text-decoration: line-through;
+        }
+
+        .preview-table tbody tr.row-disabled .row-toggle-checkbox {
+            text-decoration: none;
+        }
+
+        .cell-input {
+            width: 100%;
+            min-width: 130px;
+            padding: 6px 8px;
+            border: 1px solid transparent;
+            border-radius: 4px;
+            background: transparent;
+            color: var(--text-color);
+            font-family: inherit;
+            font-size: inherit;
+            box-sizing: border-box;
+            transition: border-color 0.2s, background-color 0.2s;
+        }
+
+        .cell-input:hover {
+            border-color: var(--border-color);
+            background-color: var(--card-background);
+        }
+
+        .cell-input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            background-color: var(--card-background);
+            box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.2);
+        }
+
+        .cell-input.cell-edited {
+            border-color: var(--success-color);
+            background-color: rgba(40, 167, 69, 0.08);
+        }
+
+        .row-toggle-checkbox {
+            cursor: pointer;
+            width: 18px;
+            height: 18px;
+        }
+
         #status {
             margin-top: 20px;
             padding: 15px;
@@ -361,12 +483,45 @@
         <div class="step-card" id="file-upload-section">
             <h2>Passo 2: Carregar Arquivo</h2>
             <input type="file" id="fileInput" accept=".csv,.xlsx">
+            
+            <div id="sheetSelectionContainer" style="display: none; margin-top: 15px;">
+                <label for="sheetSelect" style="font-weight: 500;">Escolha a Aba da Planilha</label>
+                <select id="sheetSelect"></select>
+                <div style="margin-top: 10px; display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="ignoreHiddenRowsCheckbox" checked style="width: auto; cursor: pointer;">
+                    <label for="ignoreHiddenRowsCheckbox" style="margin-bottom: 0; font-weight: normal; cursor: pointer;">
+                        Ignorar linhas ocultas/filtradas no Excel
+                    </label>
+                </div>
+            </div>
+
             <button id="importButton">Processar Arquivo</button>
         </div>
 
         <div class="step-card" id="mapping">
             <h2>Passo 3: Mapear Campos</h2>
             <!-- O conteúdo do mapeamento será inserido aqui -->
+        </div>
+
+        <div class="step-card" id="preview-section">
+            <h2>Passo 4: Conferência e Edição dos Dados (Pré-visualização)</h2>
+            <div id="previewControls" class="preview-controls">
+                <div class="preview-stats">
+                    <span id="previewStatsText">Aguardando mapeamento dos campos...</span>
+                </div>
+                <div class="preview-actions">
+                    <button type="button" id="btnSelectAllRows" class="btn-sm btn-secondary">Ativar Todas</button>
+                    <button type="button" id="btnDeselectAllRows" class="btn-sm btn-secondary">Desativar Todas</button>
+                </div>
+            </div>
+            <div style="margin: 12px 0;">
+                <input type="text" id="previewSearchInput" placeholder="🔍 Filtrar registros na tabela...">
+            </div>
+            <div class="preview-table-container">
+                <table id="previewTable" class="preview-table">
+                    <!-- Tabela dinâmica -->
+                </table>
+            </div>
         </div>
         
         <div class="step-card" id="send-section">
@@ -390,14 +545,29 @@
         let fieldMappings = {};
         let importLog = [];
 
+        let currentWorkbook = null;
+        let currentFileType = null;
+        let rawFileContent = null;
+        let rowDisabledMap = {};
+        let editedCellsMap = {};
+
         const webhookInput = document.getElementById('webhookInput');
         const spaIdInput = document.getElementById('spaIdInput');
         const fileUploadSection = document.getElementById('file-upload-section');
         const fileInput = document.getElementById('fileInput');
+        const sheetSelectionContainer = document.getElementById('sheetSelectionContainer');
+        const sheetSelect = document.getElementById('sheetSelect');
+        const ignoreHiddenRowsCheckbox = document.getElementById('ignoreHiddenRowsCheckbox');
         const importButton = document.getElementById('importButton');
         const categorySection = document.getElementById('category-section');
         const categorySelect = document.getElementById('categorySelect');
         const mappingDiv = document.getElementById('mapping');
+        const previewSection = document.getElementById('preview-section');
+        const previewStatsText = document.getElementById('previewStatsText');
+        const previewTable = document.getElementById('previewTable');
+        const previewSearchInput = document.getElementById('previewSearchInput');
+        const btnSelectAllRows = document.getElementById('btnSelectAllRows');
+        const btnDeselectAllRows = document.getElementById('btnDeselectAllRows');
         const sendSection = document.getElementById('send-section');
         const sendButton = document.getElementById('sendToBitrix');
         const statusSection = document.getElementById('status-section');
@@ -456,6 +626,7 @@
             categorySection.style.display = 'none';
             fileUploadSection.style.display = 'none';
             mappingDiv.style.display = 'none';
+            previewSection.style.display = 'none';
             sendSection.style.display = 'none';
             
             if (url) {
@@ -533,47 +704,232 @@
                     statusDiv.textContent = 'Erro na conexão: ' + errorMsg;
                     categorySection.style.display = 'none';
                     fileUploadSection.style.display = 'none';
+                    mappingDiv.style.display = 'none';
+                    previewSection.style.display = 'none';
+                    sendSection.style.display = 'none';
                 }
             } catch (e) {
                 statusDiv.textContent = 'Falha na requisição: Verifique a URL do Webhook ou sua conexão.';
                 categorySection.style.display = 'none';
                 fileUploadSection.style.display = 'none';
+                mappingDiv.style.display = 'none';
+                previewSection.style.display = 'none';
+                sendSection.style.display = 'none';
             }
         }
 
-        importButton.addEventListener('click', () => {
+        function escapeHtml(str) {
+            if (str === null || str === undefined) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        fileInput.addEventListener('change', () => {
             if (fileInput.files.length > 0) {
                 const file = fileInput.files[0];
                 const isCsv = file.name.endsWith('.csv');
                 const isXlsx = file.name.endsWith('.xlsx');
                 if (!isCsv && !isXlsx) {
+                    sheetSelectionContainer.style.display = 'none';
                     statusDiv.textContent = 'Formato de arquivo não suportado. Use .csv ou .xlsx.';
                     return;
                 }
+
+                currentFileType = isXlsx ? 'xlsx' : 'csv';
                 const reader = new FileReader();
-                reader.onload = async (e) => {
-                    statusDiv.textContent = 'Processando arquivo...';
-                    if (isCsv) {
-                        parseCsv(e.target.result);
-                    } else if (isXlsx) {
-                        parseXlsx(e.target.result);
-                    }
-                    if (fileHeaders.length > 0) {
-                        await fetchBitrixFields();
-                        if (bitrixFields.length > 0) {
-                            displayMapping();
+
+                if (isXlsx) {
+                    reader.onload = (e) => {
+                        try {
+                            currentWorkbook = XLSX.read(e.target.result, { type: 'binary' });
+                            sheetSelect.innerHTML = '';
+                            currentWorkbook.SheetNames.forEach(sheetName => {
+                                const option = document.createElement('option');
+                                option.value = sheetName;
+                                option.textContent = sheetName;
+                                sheetSelect.appendChild(option);
+                            });
+                            sheetSelectionContainer.style.display = 'block';
+                            statusDiv.textContent = `Arquivo Excel carregado (${currentWorkbook.SheetNames.length} aba(s)). Escolha a aba desejada e clique em "Processar Arquivo".`;
+                        } catch (err) {
+                            statusDiv.textContent = 'Erro ao ler arquivo Excel: ' + err.message;
                         }
-                    }
-                };
-                if (isCsv) {
-                    reader.readAsText(file);
-                } else {
+                    };
                     reader.readAsBinaryString(file);
+                } else {
+                    reader.onload = (e) => {
+                        rawFileContent = e.target.result;
+                        currentWorkbook = null;
+                        sheetSelectionContainer.style.display = 'none';
+                        statusDiv.textContent = 'Arquivo CSV selecionado. Clique em "Processar Arquivo".';
+                    };
+                    reader.readAsText(file);
                 }
             } else {
-                statusDiv.textContent = 'Por favor, selecione um arquivo.';
+                sheetSelectionContainer.style.display = 'none';
+                currentWorkbook = null;
+                currentFileType = null;
+                rawFileContent = null;
             }
         });
+
+        sheetSelect.addEventListener('change', () => {
+            if (currentWorkbook && bitrixFields.length > 0) {
+                parseCurrentFileData();
+                displayMapping();
+            }
+        });
+
+        ignoreHiddenRowsCheckbox.addEventListener('change', () => {
+            if (currentWorkbook && bitrixFields.length > 0) {
+                parseCurrentFileData();
+                displayMapping();
+            }
+        });
+
+        importButton.addEventListener('click', async () => {
+            if (!fileInput.files || fileInput.files.length === 0) {
+                statusDiv.textContent = 'Por favor, selecione um arquivo.';
+                return;
+            }
+            const file = fileInput.files[0];
+            const isCsv = file.name.endsWith('.csv');
+            const isXlsx = file.name.endsWith('.xlsx');
+            if (!isCsv && !isXlsx) {
+                statusDiv.textContent = 'Formato de arquivo não suportado. Use .csv ou .xlsx.';
+                return;
+            }
+
+            statusDiv.textContent = 'Processando arquivo...';
+
+            const processLoadedData = async () => {
+                const ok = parseCurrentFileData();
+                if (!ok) return;
+
+                if (fileHeaders.length > 0) {
+                    await fetchBitrixFields();
+                    if (bitrixFields.length > 0) {
+                        displayMapping();
+                    }
+                }
+            };
+
+            if (isXlsx && (!currentWorkbook || currentFileType !== 'xlsx')) {
+                currentFileType = 'xlsx';
+                const reader = new FileReader();
+                reader.onload = async (e) => {
+                    try {
+                        currentWorkbook = XLSX.read(e.target.result, { type: 'binary' });
+                        sheetSelect.innerHTML = '';
+                        currentWorkbook.SheetNames.forEach(sheetName => {
+                            const option = document.createElement('option');
+                            option.value = sheetName;
+                            option.textContent = sheetName;
+                            sheetSelect.appendChild(option);
+                        });
+                        sheetSelectionContainer.style.display = 'block';
+                        await processLoadedData();
+                    } catch (err) {
+                        statusDiv.textContent = 'Erro ao processar planilha: ' + err.message;
+                    }
+                };
+                reader.readAsBinaryString(file);
+            } else if (isCsv && (!rawFileContent || currentFileType !== 'csv')) {
+                currentFileType = 'csv';
+                const reader = new FileReader();
+                reader.onload = async (e) => {
+                    rawFileContent = e.target.result;
+                    currentWorkbook = null;
+                    sheetSelectionContainer.style.display = 'none';
+                    await processLoadedData();
+                };
+                reader.readAsText(file);
+            } else {
+                await processLoadedData();
+            }
+        });
+
+        function parseCurrentFileData() {
+            rowDisabledMap = {};
+            editedCellsMap = {};
+            if (currentFileType === 'csv') {
+                if (!rawFileContent) {
+                    statusDiv.textContent = 'Arquivo CSV não carregado.';
+                    return false;
+                }
+                parseCsv(rawFileContent);
+                return true;
+            } else if (currentFileType === 'xlsx') {
+                if (!currentWorkbook) {
+                    statusDiv.textContent = 'Planilha Excel ainda não carregada.';
+                    return false;
+                }
+                const sheetName = sheetSelect.value || currentWorkbook.SheetNames[0];
+                const sheet = currentWorkbook.Sheets[sheetName];
+                if (!sheet) {
+                    statusDiv.textContent = `Aba "${sheetName}" não encontrada no arquivo.`;
+                    return false;
+                }
+                const ignoreHidden = ignoreHiddenRowsCheckbox.checked;
+                const parsed = parseXlsxSheet(sheet, ignoreHidden);
+                fileHeaders = parsed.headers;
+                fileRows = parsed.rows;
+                statusDiv.textContent = `Aba "${sheetName}" carregada. Colunas: ${fileHeaders.length}. Linhas: ${fileRows.length}.`;
+                return true;
+            }
+            return false;
+        }
+
+        function parseXlsxSheet(sheet, ignoreHidden) {
+            if (!sheet || !sheet['!ref']) return { headers: [], rows: [] };
+            const range = XLSX.utils.decode_range(sheet['!ref']);
+            let headers = null;
+            const rows = [];
+
+            for (let R = range.s.r; R <= range.e.r; ++R) {
+                const isRowHidden = ignoreHidden && sheet['!rows'] && sheet['!rows'][R] && Boolean(sheet['!rows'][R].hidden);
+                if (headers === null) {
+                    const headerRow = [];
+                    for (let C = range.s.c; C <= range.e.c; ++C) {
+                        const cell = sheet[XLSX.utils.encode_cell({ r: R, c: C })];
+                        let val = '';
+                        if (cell && cell.v !== undefined && cell.v !== null) {
+                            val = cell.w !== undefined ? String(cell.w).trim() : String(cell.v).trim();
+                        }
+                        headerRow.push(val);
+                    }
+                    if (headerRow.some(c => c !== '')) {
+                        headers = headerRow;
+                    }
+                    continue;
+                }
+
+                if (isRowHidden) {
+                    continue;
+                }
+
+                const row = [];
+                for (let C = range.s.c; C <= range.e.c; ++C) {
+                    const cell = sheet[XLSX.utils.encode_cell({ r: R, c: C })];
+                    let val = '';
+                    if (cell && cell.v !== undefined && cell.v !== null) {
+                        val = cell.w !== undefined ? String(cell.w).trim() : String(cell.v).trim();
+                    }
+                    row.push(val);
+                }
+                while (row.length < headers.length) {
+                    row.push('');
+                }
+                if (row.some(c => c !== '')) {
+                    rows.push(row);
+                }
+            }
+            return { headers: headers || [], rows };
+        }
 
         function parseCsv(text) {
             const lines = text.split(/\r?\n/);
@@ -583,22 +939,11 @@
                 if (lines[i].trim()) {
                     const row = lines[i].split(',').map(c => c.trim());
                     if (row.some(c => c !== '')) {
+                        while (row.length < fileHeaders.length) row.push('');
                         fileRows.push(row);
                     }
                 }
             }
-            statusDiv.textContent = `Arquivo carregado. Colunas: ${fileHeaders.join(', ')}. Linhas: ${fileRows.length}`;
-        }
-
-        function parseXlsx(binary) {
-            const workbook = XLSX.read(binary, {type: 'binary'});
-            const sheetName = workbook.SheetNames[0];
-            const sheet = workbook.Sheets[sheetName];
-            const data = XLSX.utils.sheet_to_json(sheet, {header: 1, raw: false});
-            fileHeaders = data[0].map(h => h.toString().trim());
-            fileRows = data.slice(1)
-                .map(row => row.map(c => c ? c.toString().trim() : ''))
-                .filter(row => row.some(c => c !== ''));
             statusDiv.textContent = `Arquivo carregado. Colunas: ${fileHeaders.join(', ')}. Linhas: ${fileRows.length}`;
         }
 
@@ -726,6 +1071,7 @@
 
             mappingDiv.innerHTML = '<h2>Passo 3: Mapear Campos</h2>' + mappingContent;
             mappingDiv.style.display = 'block';
+            previewSection.style.display = 'block';
             sendSection.style.display = 'block';
 
             document.querySelectorAll('.contact-mapping-select').forEach(select => {
@@ -733,10 +1079,12 @@
                     const saved = getSavedContactMappings();
                     saved[select.id] = select.value;
                     saveSavedContactMappings(saved);
+                    renderPreviewTable();
                 });
             });
 
             renderItemMapping();
+            renderPreviewTable();
         }
 
         function renderItemMapping() {
@@ -842,6 +1190,7 @@
                         delete mappings[fKey];
                     }
                     saveSavedFieldMappings(mappings);
+                    renderPreviewTable();
                 });
             });
 
@@ -865,6 +1214,7 @@
                         saveSavedFieldMappings(mappings);
                     }
                     renderItemMapping();
+                    renderPreviewTable();
                 });
             });
 
@@ -887,9 +1237,273 @@
                         saveHiddenFields([]);
                         showHiddenFields = false;
                         renderItemMapping();
+                        renderPreviewTable();
                     }
                 });
             }
+        }
+
+        // ================= PASSO 4: PRÉ-VISUALIZAÇÃO E EDIÇÃO =================
+
+        function getPreviewColumns() {
+            const mappedCols = [];
+            const addedHeaderIndices = new Set();
+
+            // 1. Contatos mapeados
+            const contactEmail = document.getElementById('contact_email_header')?.value;
+            const contactName = document.getElementById('contact_name_header')?.value;
+            const contactReg = document.getElementById('contact_reg_code_header')?.value;
+
+            if (contactEmail && fileHeaders.includes(contactEmail)) {
+                const idx = fileHeaders.indexOf(contactEmail);
+                mappedCols.push({ index: idx, header: contactEmail, targetLabel: '👤 E-mail do Contato' });
+                addedHeaderIndices.add(idx);
+            }
+            if (contactName && fileHeaders.includes(contactName)) {
+                const idx = fileHeaders.indexOf(contactName);
+                if (!addedHeaderIndices.has(idx)) {
+                    mappedCols.push({ index: idx, header: contactName, targetLabel: '👤 Nome do Contato' });
+                    addedHeaderIndices.add(idx);
+                }
+            }
+            if (contactReg && fileHeaders.includes(contactReg)) {
+                const idx = fileHeaders.indexOf(contactReg);
+                if (!addedHeaderIndices.has(idx)) {
+                    mappedCols.push({ index: idx, header: contactReg, targetLabel: '👤 Matrícula' });
+                    addedHeaderIndices.add(idx);
+                }
+            }
+
+            // 2. Mapeamentos do Item
+            const hiddenFields = getHiddenFields();
+            bitrixFields.forEach(fieldKey => {
+                if (hiddenFields.includes(fieldKey)) return;
+                const select = document.getElementById('map_' + fieldKey);
+                const colName = select ? select.value : null;
+                if (colName && fileHeaders.includes(colName)) {
+                    const idx = fileHeaders.indexOf(colName);
+                    const fieldTitle = bitrixFieldDefs[fieldKey]?.title || fieldKey;
+                    const existing = mappedCols.find(c => c.index === idx);
+                    if (existing) {
+                        existing.targetLabel += `, 📋 ${fieldTitle}`;
+                    } else {
+                        mappedCols.push({ index: idx, header: colName, targetLabel: `📋 ${fieldTitle}` });
+                        addedHeaderIndices.add(idx);
+                    }
+                }
+            });
+
+            // 3. Fallback se nenhuma coluna foi mapeada ainda
+            if (mappedCols.length === 0) {
+                fileHeaders.slice(0, 8).forEach((h, idx) => {
+                    mappedCols.push({ index: idx, header: h, targetLabel: 'Coluna da Planilha' });
+                });
+            }
+
+            return mappedCols;
+        }
+
+        function renderPreviewTable() {
+            if (!fileRows || fileRows.length === 0) {
+                previewSection.style.display = 'none';
+                return;
+            }
+
+            previewSection.style.display = 'block';
+            const columns = getPreviewColumns();
+
+            let theadHtml = '<thead><tr>';
+            theadHtml += '<th style="width: 50px; text-align: center;">Ativo</th>';
+            theadHtml += '<th style="width: 60px; text-align: center;">#</th>';
+            columns.forEach(col => {
+                theadHtml += `
+                    <th>
+                        <div style="font-weight: 600;">${escapeHtml(col.header)}</div>
+                        <div style="font-size: 0.75em; color: var(--secondary-color); font-weight: normal; margin-top: 2px;">
+                            ${escapeHtml(col.targetLabel)}
+                        </div>
+                    </th>
+                `;
+            });
+            theadHtml += '</tr></thead>';
+
+            let tbodyHtml = '<tbody>';
+            fileRows.forEach((row, rowIndex) => {
+                const isDisabled = Boolean(rowDisabledMap[rowIndex]);
+                tbodyHtml += `<tr id="preview-row-${rowIndex}" class="${isDisabled ? 'row-disabled' : ''}">`;
+                tbodyHtml += `
+                    <td style="text-align: center;">
+                        <input type="checkbox" class="row-toggle-checkbox" data-row="${rowIndex}" ${isDisabled ? '' : 'checked'} title="Desativar/Ativar linha para importação">
+                    </td>
+                `;
+                tbodyHtml += `
+                    <td style="text-align: center; color: var(--secondary-color); font-weight: 500;">
+                        ${rowIndex + 1}
+                    </td>
+                `;
+
+                columns.forEach(col => {
+                    const val = row[col.index] !== undefined ? row[col.index] : '';
+                    const cellKey = `${rowIndex}_${col.index}`;
+                    const isEdited = Boolean(editedCellsMap[cellKey]);
+                    tbodyHtml += `
+                        <td>
+                            <input type="text" class="cell-input ${isEdited ? 'cell-edited' : ''}" data-row="${rowIndex}" data-col="${col.index}" value="${escapeHtml(val)}" title="Clique para editar valor incorreto">
+                        </td>
+                    `;
+                });
+
+                tbodyHtml += '</tr>';
+            });
+            tbodyHtml += '</tbody>';
+
+            previewTable.innerHTML = theadHtml + tbodyHtml;
+            applySearchFilter();
+        }
+
+        // Delegação de eventos na previewTable para inputs e checkboxes
+        previewTable.addEventListener('input', (e) => {
+            if (e.target.classList.contains('cell-input')) {
+                const r = parseInt(e.target.dataset.row);
+                const c = parseInt(e.target.dataset.col);
+                const val = e.target.value;
+                if (fileRows[r]) {
+                    fileRows[r][c] = val;
+                    editedCellsMap[`${r}_${c}`] = true;
+                    e.target.classList.add('cell-edited');
+                }
+            }
+        });
+
+        previewTable.addEventListener('change', (e) => {
+            if (e.target.classList.contains('row-toggle-checkbox')) {
+                const r = parseInt(e.target.dataset.row);
+                const isChecked = e.target.checked;
+                rowDisabledMap[r] = !isChecked;
+                const tr = document.getElementById(`preview-row-${r}`);
+                if (tr) {
+                    if (!isChecked) {
+                        tr.classList.add('row-disabled');
+                    } else {
+                        tr.classList.remove('row-disabled');
+                    }
+                }
+                updatePreviewStats();
+            }
+        });
+
+        function updateRowsDisplay() {
+            fileRows.forEach((_, idx) => {
+                const tr = document.getElementById(`preview-row-${idx}`);
+                if (tr) {
+                    const isDisabled = Boolean(rowDisabledMap[idx]);
+                    const checkbox = tr.querySelector('.row-toggle-checkbox');
+                    if (checkbox) checkbox.checked = !isDisabled;
+                    if (isDisabled) {
+                        tr.classList.add('row-disabled');
+                    } else {
+                        tr.classList.remove('row-disabled');
+                    }
+                }
+            });
+        }
+
+        btnSelectAllRows.addEventListener('click', () => {
+            const query = previewSearchInput.value.trim().toLowerCase();
+            fileRows.forEach((_, idx) => {
+                if (query) {
+                    const tr = document.getElementById(`preview-row-${idx}`);
+                    if (tr && tr.style.display !== 'none') {
+                        rowDisabledMap[idx] = false;
+                    }
+                } else {
+                    rowDisabledMap[idx] = false;
+                }
+            });
+            updateRowsDisplay();
+            updatePreviewStats();
+        });
+
+        btnDeselectAllRows.addEventListener('click', () => {
+            const query = previewSearchInput.value.trim().toLowerCase();
+            fileRows.forEach((_, idx) => {
+                if (query) {
+                    const tr = document.getElementById(`preview-row-${idx}`);
+                    if (tr && tr.style.display !== 'none') {
+                        rowDisabledMap[idx] = true;
+                    }
+                } else {
+                    rowDisabledMap[idx] = true;
+                }
+            });
+            updateRowsDisplay();
+            updatePreviewStats();
+        });
+
+        previewSearchInput.addEventListener('input', () => {
+            applySearchFilter();
+        });
+
+        function applySearchFilter() {
+            const query = previewSearchInput.value.trim().toLowerCase();
+            let visibleCount = 0;
+            fileRows.forEach((row, idx) => {
+                const tr = document.getElementById(`preview-row-${idx}`);
+                if (!tr) return;
+                if (!query) {
+                    tr.style.display = '';
+                    visibleCount++;
+                } else {
+                    const match = row.some(c => String(c).toLowerCase().includes(query));
+                    tr.style.display = match ? '' : 'none';
+                    if (match) visibleCount++;
+                }
+            });
+            updatePreviewStats(visibleCount);
+        }
+
+        function updatePreviewStats(filteredCount) {
+            const total = fileRows.length;
+            const disabledCount = Object.keys(rowDisabledMap).filter(k => rowDisabledMap[k] === true).length;
+            const activeCount = total - disabledCount;
+            const query = previewSearchInput.value.trim();
+            let text = `Total: ${total} registro(s) | Ativos para envio: <strong>${activeCount}</strong> | Desativados: <strong>${disabledCount}</strong>`;
+            if (query) {
+                const count = filteredCount !== undefined ? filteredCount : document.querySelectorAll('#previewTable tbody tr:not([style*="display: none"])').length;
+                text += ` | Visíveis no filtro: <strong>${count}</strong>`;
+            }
+            previewStatsText.innerHTML = text;
+        }
+
+        // Helper para extrair múltiplos contatos de uma linha (separados por vírgula ou ponto-e-vírgula)
+        function extractRowContacts(row, emailIdx, nameIdx, regCodeIdx) {
+            if (emailIdx === -1 || !row || row[emailIdx] === undefined || row[emailIdx] === null) return [];
+
+            const rawEmailsStr = String(row[emailIdx]).trim();
+            if (!rawEmailsStr) return [];
+
+            // Separa por vírgula ou ponto-e-vírgula
+            const emailTokens = rawEmailsStr.split(/[,;]/).map(s => s.trim()).filter(Boolean);
+
+            const rawNamesStr = (nameIdx !== -1 && row[nameIdx] !== undefined && row[nameIdx] !== null) ? String(row[nameIdx]).trim() : '';
+            const nameTokens = rawNamesStr ? rawNamesStr.split(/[,;]/).map(s => s.trim()).filter(Boolean) : [];
+
+            const rawRegCodesStr = (regCodeIdx !== -1 && row[regCodeIdx] !== undefined && row[regCodeIdx] !== null) ? String(row[regCodeIdx]).trim() : '';
+            const regCodeTokens = rawRegCodesStr ? rawRegCodesStr.split(/[,;]/).map(s => s.trim()).filter(Boolean) : [];
+
+            const contacts = [];
+            emailTokens.forEach((email, index) => {
+                if (email.includes('@')) {
+                    const name = (nameTokens[index] && nameTokens[index].trim())
+                        || (nameTokens[0] && nameTokens.length === 1 ? nameTokens[0].trim() : '')
+                        || email.split('@')[0];
+                    const regCode = (regCodeTokens[index] && regCodeTokens[index].trim())
+                        || (regCodeTokens[0] && regCodeTokens.length === 1 ? regCodeTokens[0].trim() : '')
+                        || '';
+                    contacts.push({ email, name, regCode });
+                }
+            });
+            return contacts;
         }
 
         sendButton.addEventListener('click', async () => {
@@ -912,7 +1526,14 @@
             console.clear(); // Clear console for new import
             console.log('--- Iniciando importação ---');
             statusDiv.textContent = 'Iniciando processo de importação...';
-            importLog = [`Relatório de Importação Bitrix24 - ${new Date().toLocaleString()}`, '---'];
+            const disabledRowsCount = Object.keys(rowDisabledMap).filter(k => rowDisabledMap[k] === true).length;
+            importLog = [
+                `Relatório de Importação Bitrix24 - ${new Date().toLocaleString()}`,
+                `Total de Linhas no Arquivo: ${fileRows.length}`,
+                `Linhas Desativadas: ${disabledRowsCount}`,
+                `Linhas Ativas Processadas: ${fileRows.length - disabledRowsCount}`,
+                '---'
+            ];
             downloadLogBtn.style.display = 'none';
             
             // 1. Get explicit mappings for contact data from the new dropdowns
@@ -922,7 +1543,7 @@
 
             const destinationContactField = Object.keys(fieldMappings).find(fieldKey => {
                 const def = bitrixFieldDefs[fieldKey];
-                return def && def.type === 'crm_contact';
+                return def && (def.type === 'crm_contact' || fieldKey === 'contactId' || fieldKey === 'contactIds');
             }) || null;
 
             console.log(`Cabeçalho do E-mail do Contato: '${sourceEmailHeader}'`);
@@ -941,28 +1562,34 @@
             let successCount = 0;
             let errorCount = 0;
             const emailToContactIdMap = new Map();
-            const emailsToProcess = new Map();
+            const contactDataMap = new Map(); // email -> { name, regCode }
+            const emailsToProcess = new Set();
 
-            // 1a. Collect emails from the explicitly mapped source column
-            if (sourceEmailHeader) {
-                const emailHeaderIndex = fileHeaders.indexOf(sourceEmailHeader);
-                if (emailHeaderIndex !== -1) {
-                    fileRows.forEach((row) => {
-                        const email = row[emailHeaderIndex];
-                        if (email && email.includes('@')) {
-                            emailsToProcess.set(email.trim(), null);
+            const sourceEmailHeaderIndex = sourceEmailHeader ? fileHeaders.indexOf(sourceEmailHeader) : -1;
+            const sourceNameHeaderIndex = sourceNameHeader ? fileHeaders.indexOf(sourceNameHeader) : -1;
+            const sourceRegCodeHeaderIndex = sourceRegCodeHeader ? fileHeaders.indexOf(sourceRegCodeHeader) : -1;
+
+            // 1a. Coleta todos os e-mails e contatos individuais da coluna mapeada (suportando múltiplos separados por vírgula)
+            if (sourceEmailHeaderIndex !== -1) {
+                fileRows.forEach((row, rowIndex) => {
+                    if (rowDisabledMap[rowIndex] === true) return;
+                    const contacts = extractRowContacts(row, sourceEmailHeaderIndex, sourceNameHeaderIndex, sourceRegCodeHeaderIndex);
+                    contacts.forEach(c => {
+                        emailsToProcess.add(c.email);
+                        if (!contactDataMap.has(c.email)) {
+                            contactDataMap.set(c.email, { name: c.name, regCode: c.regCode });
                         }
                     });
-                }
-                console.log('E-mails únicos para processar:', Array.from(emailsToProcess.keys()));
-                statusDiv.textContent = `Encontrados ${emailsToProcess.size} e-mails para processar.`;
+                });
+                console.log('E-mails únicos para processar:', Array.from(emailsToProcess));
+                statusDiv.textContent = `Encontrados ${emailsToProcess.size} e-mail(s) de contato(s) para processar.`;
             }
 
             if (emailsToProcess.size > 0) {
-                // 2. Find existing contacts
-                statusDiv.textContent = `Verificando ${emailsToProcess.size} e-mails de contatos no Bitrix...`;
+                // 2. Verificar contatos existentes no Bitrix
+                statusDiv.textContent = `Verificando ${emailsToProcess.size} contato(s) no Bitrix...`;
                 const checkContactsCmds = {};
-                for (const email of emailsToProcess.keys()) {
+                for (const email of emailsToProcess) {
                     checkContactsCmds[email] = `crm.contact.list?filter[EMAIL]=${encodeURIComponent(email)}&select[]=ID`;
                 }
 
@@ -990,30 +1617,23 @@
                             }
                         });
                     }
-                     statusDiv.textContent = `${emailToContactIdMap.size} contatos existentes encontrados. ${emailsToCreate.size} novos contatos a serem criados.`;
+                    statusDiv.textContent = `${emailToContactIdMap.size} contatos existentes encontrados. ${emailsToCreate.size} novos contatos a serem criados.`;
 
-                    // 3. Create new contacts
+                    // 3. Criar novos contatos no Bitrix
                     if (emailsToCreate.size > 0) {
-                        statusDiv.textContent += `\nCriando ${emailsToCreate.size} novos contatos...`;
+                        statusDiv.textContent += `\nCriando ${emailsToCreate.size} novo(s) contato(s)...`;
                         const createContactsCmds = {};
-
-                        const sourceEmailHeaderIndex = fileHeaders.indexOf(sourceEmailHeader);
-                        const sourceNameHeaderIndex = sourceNameHeader ? fileHeaders.indexOf(sourceNameHeader) : -1;
-                        const sourceRegCodeHeaderIndex = sourceRegCodeHeader ? fileHeaders.indexOf(sourceRegCodeHeader) : -1;
                         const regCodeFieldKeyOnContact = 'UF_CRM_1764081150774';
 
                         emailsToCreate.forEach(email => {
-                            const rowData = fileRows.find(r => r[sourceEmailHeaderIndex] && r[sourceEmailHeaderIndex].trim() === email);
-
-                            const name = (rowData && sourceNameHeaderIndex !== -1 && rowData[sourceNameHeaderIndex]) ? rowData[sourceNameHeaderIndex] : email.split('@')[0];
-                            const regCode = (rowData && sourceRegCodeHeaderIndex !== -1) ? rowData[sourceRegCodeHeaderIndex] : '';
+                            const cData = contactDataMap.get(email) || { name: email.split('@')[0], regCode: '' };
+                            const name = cData.name || email.split('@')[0];
+                            const regCode = cData.regCode || '';
 
                             let command = `crm.contact.add?fields[NAME]=${encodeURIComponent(name)}&fields[EMAIL][0][VALUE]=${encodeURIComponent(email)}&fields[EMAIL][0][VALUE_TYPE]=WORK`;
-                            
                             if (regCode) {
                                 command += `&fields[${regCodeFieldKeyOnContact}]=${encodeURIComponent(regCode)}`;
                             }
-                            
                             createContactsCmds[email] = command;
                             console.log(`Comando para criar contato para ${email}: ${command}`);
                         });
@@ -1028,8 +1648,8 @@
                         console.log('Resposta da criação de contatos:', createData);
                         
                         if (createData.result && createData.result.result) {
-                             const results = createData.result.result;
-                             Object.keys(results).forEach(email => {
+                            const results = createData.result.result;
+                            Object.keys(results).forEach(email => {
                                 const contactId = results[email];
                                 if (contactId) {
                                     emailToContactIdMap.set(email, contactId);
@@ -1051,21 +1671,29 @@
             
             console.log('Mapa final de E-mail -> ID do Contato:', emailToContactIdMap);
 
-            // 4. Prepare and send `crm.item.add` commands
+            // 4. Preparar e enviar comandos crm.item.add
             statusDiv.textContent = 'Preparando a importação dos itens...';
             console.log('--- Preparando itens para importação ---');
             const batchCommands = [];
             const rowIdentities = []; 
 
             for (const [rowIndex, row] of fileRows.entries()) {
+                if (rowDisabledMap[rowIndex] === true) {
+                    console.log(`Linha ${rowIndex + 2}: Desativada no Passo 4. Ignorando.`);
+                    continue;
+                }
                 const fields = {};
                 let hasMappedField = false;
-                
-                const sourceEmailHeaderIndex = sourceEmailHeader ? fileHeaders.indexOf(sourceEmailHeader) : -1;
-                const currentRowEmail = (sourceEmailHeaderIndex !== -1 && row[sourceEmailHeaderIndex]) ? row[sourceEmailHeaderIndex].trim() : null;
 
-                // Tenta pegar um identificador da linha (ex: E-mail ou Linha X)
-                const rowIdLabel = currentRowEmail || `Linha ${rowIndex + 2}`;
+                // Extrai todos os contatos desta linha (podem ser 1, 2 ou mais)
+                const rowContacts = extractRowContacts(row, sourceEmailHeaderIndex, sourceNameHeaderIndex, sourceRegCodeHeaderIndex);
+                const rowContactIds = rowContacts
+                    .map(c => emailToContactIdMap.get(c.email))
+                    .filter(Boolean);
+
+                const rowIdLabel = rowContacts.length > 0 
+                    ? rowContacts.map(c => c.email).join(', ') 
+                    : `Linha ${rowIndex + 2}`;
                 rowIdentities.push(rowIdLabel);
 
                 for (const fieldKey in fieldMappings) {
@@ -1077,16 +1705,15 @@
                         let value = row[idx] !== undefined && row[idx] !== null ? String(row[idx]).trim() : '';
 
                         if (fieldKey === destinationContactField) {
-                             if (currentRowEmail && emailToContactIdMap.has(currentRowEmail)) {
-                                 const contactId = emailToContactIdMap.get(currentRowEmail);
-                                 if (def && def.isMultiple) {
-                                     value = [contactId];
-                                 } else {
-                                     value = contactId;
-                                 }
-                             } else {
-                                 value = (def && def.isMultiple) ? [] : '';
-                             }
+                            if (rowContactIds.length > 0) {
+                                if (def && def.isMultiple) {
+                                    value = rowContactIds;
+                                } else {
+                                    value = rowContactIds[0];
+                                }
+                            } else {
+                                value = (def && def.isMultiple) ? [] : '';
+                            }
                         } else if (def && def.type === 'enumeration' && value !== '') {
                             const item = def.items && def.items.find(it => it.VALUE.toLowerCase() === value.toLowerCase());
                             value = item ? item.ID : '';
@@ -1094,6 +1721,16 @@
                             value = ['y', 'yes', 'true', '1', 'sim'].includes(value.toLowerCase()) ? 'Y' : 'N';
                         }
                         fields[fieldKey] = value;
+                    }
+                }
+
+                // Vinculação de múltiplos contatos nativa do Bitrix24 SPA (contactIds e contactId)
+                if (rowContactIds.length > 0) {
+                    if (bitrixFieldDefs['contactIds'] && !fields['contactIds']) {
+                        fields['contactIds'] = rowContactIds;
+                    }
+                    if (bitrixFieldDefs['contactId'] && !fields['contactId']) {
+                        fields['contactId'] = rowContactIds[0];
                     }
                 }
 
@@ -1116,7 +1753,7 @@
                 for (const key in fields) {
                     const value = fields[key];
                     const def = bitrixFieldDefs[key];
-                     if (def && def.isMultiple && Array.isArray(value)) {
+                    if (Array.isArray(value)) {
                         value.forEach((item, index) => {
                             command += `&fields[${key}][${index}]=${encodeURIComponent(item)}`;
                         });
@@ -1177,8 +1814,9 @@
                 }
             }
 
-            statusDiv.textContent = `Importação concluída!\nSucessos: ${successCount}\nErros: ${errorCount}.`;
+            statusDiv.textContent = `Importação concluída!\nSucessos: ${successCount}\nErros: ${errorCount}\nDesativadas: ${disabledRowsCount}.`;
             importLog.push('---');
+            importLog.push(`Linhas Desativadas: ${disabledRowsCount}`);
             importLog.push(`Total de Sucessos: ${successCount}`);
             importLog.push(`Total de Erros: ${errorCount}`);
             
